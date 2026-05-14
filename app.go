@@ -199,14 +199,7 @@ func (a *App) startBridgeWithAccount(acct *account.Account) error {
 	}
 	logger.Debug("Got secret for account %s", acct.ID)
 
-	// 使用账号的 API 模式，如果未设置则默认为 openai
-	apiMode := acct.APIMode
-	if apiMode == "" {
-		apiMode = "openai"
-	}
-	logger.Info("Using API mode: %s for account %s", apiMode, acct.Name)
-
-	b, err := newBridge(pat, apiMode)
+	b, err := newBridge(pat)
 	if err != nil {
 		logger.Error("Failed to create bridge: %v", err)
 		return fmt.Errorf("failed to create bridge: %w", err)
@@ -214,27 +207,10 @@ func (a *App) startBridgeWithAccount(acct *account.Account) error {
 	logger.Info("Bridge created successfully")
 
 	mux := http.NewServeMux()
-
-	// 根据 API 模式注册不同的路由
-	switch apiMode {
-	case "openai":
-		mux.HandleFunc("/v1/chat/completions", b.handleChat)
-		logger.Info("Bridge: OpenAI mode - /v1/chat/completions")
-	case "anthropic":
-		mux.HandleFunc("/v1/messages", b.handleMessages)
-		logger.Info("Bridge: Anthropic mode - /v1/messages")
-	case "gemini":
-		mux.HandleFunc("/v1/models/", b.handleGemini)
-		logger.Info("Bridge: Gemini mode - /v1/models/*")
-	case "claude-code":
-		mux.HandleFunc("/v1/chat/completions", b.handleChat)
-		mux.HandleFunc("/v1/messages", b.handleMessages)
-		logger.Info("Bridge: Claude Code mode - dual endpoints")
-	default:
-		// 默认 OpenAI 模式
-		mux.HandleFunc("/v1/chat/completions", b.handleChat)
-		logger.Info("Bridge: Default OpenAI mode")
-	}
+	mux.HandleFunc("/v1/chat/completions", b.handleChatCompletions)
+	mux.HandleFunc("/v1/messages", b.handleClaudeMessages)
+	mux.HandleFunc("/v1/responses", b.handleCodexResponses)
+	logger.Info("Bridge: all endpoints registered")
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf("127.0.0.1:%d", a.bridgePort),
@@ -246,7 +222,7 @@ func (a *App) startBridgeWithAccount(acct *account.Account) error {
 	a.bridgeSrv = srv
 	a.bridgeMu.Unlock()
 
-	logger.Info("Bridge started on port %d (mode: %s)", a.bridgePort, apiMode)
+	logger.Info("Bridge started on port %d", a.bridgePort)
 	go srv.ListenAndServe()
 	return nil
 }
@@ -284,6 +260,10 @@ func (a *App) UpdateAccountAPIMode(accountID, apiMode string) error {
 
 func (a *App) GetLogs(limit int) []logger.Entry {
 	return logger.GetLogs(limit)
+}
+
+func (a *App) ReorderAccounts(ids []string) error {
+	return account.Reorder(ids)
 }
 
 func (a *App) ClearLogs() {

@@ -50,6 +50,10 @@ export function QuitApp() {
   return window['go']['main']['App']['QuitApp']();
 }
 
+export function ReorderAccounts(arg1) {
+  return window['go']['main']['App']['ReorderAccounts'](arg1);
+}
+
 export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
 }

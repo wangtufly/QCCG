@@ -27,6 +27,8 @@ export function ListAccounts():Promise<Array<account.Account>>;
 
 export function QuitApp():Promise<void>;
 
+export function ReorderAccounts(arg1:Array<string>):Promise<void>;
+
 export function SaveSettings(arg1:account.Settings):Promise<void>;
 
 export function SetActiveAccount(arg1:string):Promise<void>;

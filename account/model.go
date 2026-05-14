@@ -14,6 +14,7 @@ type Account struct {
 	CreatedAt time.Time  `json:"created_at"`
 	LastUsed  *time.Time `json:"last_used,omitempty"`
 	Active    bool       `json:"active"`
+	SortOrder int        `json:"sort_order"`
 }
 
 type OAuthSession struct {

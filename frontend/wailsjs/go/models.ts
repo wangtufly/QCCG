@@ -14,6 +14,7 @@ export namespace account {
 	    // Go type: time
 	    last_used?: any;
 	    active: boolean;
+	    sort_order: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Account(source);
@@ -32,6 +33,7 @@ export namespace account {
 	        this.created_at = this.convertValues(source["created_at"], null);
 	        this.last_used = this.convertValues(source["last_used"], null);
 	        this.active = source["active"];
+	        this.sort_order = source["sort_order"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

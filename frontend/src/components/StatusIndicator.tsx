@@ -21,15 +21,8 @@ async function stopBridge() {
   }
 }
 
-function getApiUrl(port: number, mode: string): string {
-  const base = `http://127.0.0.1:${port}`
-  switch (mode) {
-    case 'anthropic':
-    case 'claude-code':
-      return `${base}/v1/messages`
-    default:
-      return `${base}/v1/chat/completions`
-  }
+function getBaseUrl(port: number): string {
+  return `http://127.0.0.1:${port}`
 }
 
 export default function StatusIndicator() {
@@ -64,7 +57,7 @@ export default function StatusIndicator() {
       </span>
       {status.running && (
         <code className="status-indicator-url">
-          {getApiUrl(status.port, status.api_mode)}
+          {getBaseUrl(status.port)}
         </code>
       )}
     </div>

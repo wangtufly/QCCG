@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { DndContext, closestCenter, DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import AccountCard from '../components/AccountCard'
 import AddAccountModal from '../components/AddAccountModal'
 
@@ -31,9 +33,9 @@ async function deleteAccount(id: string) {
   }
 }
 
-async function updateAccountAPIMode(id: string, apiMode: string) {
-  if ((window as any).go?.main?.App?.UpdateAccountAPIMode) {
-    return (window as any).go.main.App.UpdateAccountAPIMode(id, apiMode)
+async function reorderAccounts(ids: string[]) {
+  if ((window as any).go?.main?.App?.ReorderAccounts) {
+    return (window as any).go.main.App.ReorderAccounts(ids)
   }
 }
 
@@ -56,7 +58,16 @@ export default function AccountsPage() {
     const ok = await (window as any).go?.main?.App?.Confirm('删除账号', '确认删除此账号？此操作不可撤销。')
     if (ok) deleteAccount(id).then(refresh)
   }
-  const handleAPIMode = (id: string, apiMode: string) => updateAccountAPIMode(id, apiMode).then(refresh)
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = accounts.findIndex(a => a.id === active.id)
+    const newIndex = accounts.findIndex(a => a.id === over.id)
+    const reordered = arrayMove(accounts, oldIndex, newIndex)
+    setAccounts(reordered)
+    reorderAccounts(reordered.map(a => a.id))
+  }
 
   return (
     <div>
@@ -73,11 +84,15 @@ export default function AccountsPage() {
           <p>暂无账号，点击右上角添加</p>
         </div>
       ) : (
-        <div className="accounts-grid">
-          {accounts.map(a => (
-            <AccountCard key={a.id} account={a} onActivate={handleActivate} onDelete={handleDelete} onAPIMode={handleAPIMode} refreshInterval={refreshInterval} />
-          ))}
-        </div>
+        <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={accounts.map(a => a.id)} strategy={verticalListSortingStrategy}>
+            <div className="accounts-grid">
+              {accounts.map(a => (
+                <AccountCard key={a.id} account={a} onActivate={handleActivate} onDelete={handleDelete} refreshInterval={refreshInterval} />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
       {showAdd && <AddAccountModal onClose={() => { setShowAdd(false); refresh() }} />}
     </div>

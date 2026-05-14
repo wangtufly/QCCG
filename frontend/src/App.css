@@ -350,7 +350,10 @@ body {
 }
 
 .account-card:hover { box-shadow: var(--shadow-md); }
-.account-card.active { border-color: var(--primary); }
+.account-card.active {
+  border: 2px solid var(--primary);
+  background: var(--bg-card);
+}
 
 /* 顶部 */
 .ac-header { display: flex; flex-direction: column; gap: 4px; }
@@ -497,6 +500,18 @@ body {
   box-shadow: 0 0 0 3px rgba(16,185,129,0.2);
   margin: 0 6px;
   animation: pulse-sm 2s infinite;
+}
+
+.ac-active-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--primary-light);
+  border-radius: 12px;
 }
 
 /* API 模式图标选择器 */

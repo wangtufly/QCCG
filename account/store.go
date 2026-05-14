@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -124,6 +125,9 @@ func listUnlocked(d string) ([]Account, error) {
 		}
 		accounts = append(accounts, a)
 	}
+	sort.Slice(accounts, func(i, j int) bool {
+		return accounts[i].SortOrder < accounts[j].SortOrder
+	})
 	return accounts, nil
 }
 
@@ -133,6 +137,32 @@ func saveUnlocked(d string, a *Account) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(d, a.ID+".json"), data, 0600)
+}
+
+func Reorder(ids []string) error {
+	mu.Lock()
+	defer mu.Unlock()
+	d, err := dir()
+	if err != nil {
+		return err
+	}
+	accounts, err := listUnlocked(d)
+	if err != nil {
+		return err
+	}
+	orderMap := make(map[string]int)
+	for i, id := range ids {
+		orderMap[id] = i
+	}
+	for i := range accounts {
+		if order, ok := orderMap[accounts[i].ID]; ok {
+			accounts[i].SortOrder = order
+		}
+		if err := saveUnlocked(d, &accounts[i]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func SanitizeID(raw string) string {

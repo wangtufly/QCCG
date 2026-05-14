@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import iconOpenAI from '/icons/openai.png'
-import iconAnthropic from '/icons/anthropic.png'
-import iconGemini from '/icons/gemini.png'
-import iconClaudeCode from '/icons/claude-code.png'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 interface Account {
   id: string
@@ -32,16 +30,8 @@ interface Props {
   account: Account
   onActivate: (id: string) => void
   onDelete: (id: string) => void
-  onAPIMode: (id: string, apiMode: string) => void
-  refreshInterval?: number // 秒，0=不自动刷新
+  refreshInterval?: number
 }
-
-const apiModeOptions = [
-  { value: 'openai', label: 'OpenAI', icon: iconOpenAI },
-  { value: 'anthropic', label: 'Anthropic', icon: iconAnthropic },
-  { value: 'gemini', label: 'Gemini', icon: iconGemini },
-  { value: 'claude-code', label: 'Claude Code', icon: iconClaudeCode },
-]
 
 // plan 名称关键词 → 配色
 function planBadgeStyle(plan: string): { color: string; background: string } {
@@ -70,7 +60,14 @@ function formatResetTime(ts: string | undefined): string {
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
 }
 
-export default function AccountCard({ account: acct, onActivate, onDelete, onAPIMode, refreshInterval = 300 }: Props) {
+export default function AccountCard({ account: acct, onActivate, onDelete, refreshInterval = 300 }: Props) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: acct.id })
+  const dragStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+  }
+
   const [quota, setQuota] = useState<QuotaInfo | null>(null)
   const [quotaError, setQuotaError] = useState(false)
   const [fetchedAt, setFetchedAt] = useState<number | undefined>()
@@ -97,11 +94,10 @@ export default function AccountCard({ account: acct, onActivate, onDelete, onAPI
 
   const plan = quota?.plan
   const displayName = acct.name || acct.email || acct.id
-  const currentMode = apiModeOptions.find(o => o.value === (acct.api_mode || 'openai'))
   const resetTime = quota?.user_quota?.reset_time
 
   return (
-    <div className={`account-card ${acct.active ? 'active' : ''}`}>
+    <div ref={setNodeRef} style={dragStyle} {...attributes} {...listeners} className={`account-card ${acct.active ? 'active' : ''}`}>
       {/* 顶部：账号名 + badges */}
       <div className="ac-header">
         <div className="ac-name-row">
@@ -131,27 +127,12 @@ export default function AccountCard({ account: acct, onActivate, onDelete, onAPI
       {/* 底部：操作图标 */}
       <div className="ac-footer">
         <div className="ac-footer-actions">
-          {/* API 格式图标（当前选中） */}
-          <div className="ac-api-mode-picker">
-            {apiModeOptions.map(opt => (
-              <button
-                key={opt.value}
-                title={opt.label}
-                data-mode={opt.value}
-                className={`ac-mode-btn ${(acct.api_mode || 'openai') === opt.value ? 'active' : ''}`}
-                onClick={() => onAPIMode(acct.id, opt.value)}
-              >
-                <img src={opt.icon} alt={opt.label} className="ac-mode-icon" />
-              </button>
-            ))}
-          </div>
-          <div className="ac-divider" />
           {!acct.active && (
             <button title="激活" className="ac-action-btn" onClick={() => onActivate(acct.id)}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             </button>
           )}
-          {acct.active && <span className="ac-active-dot" title="使用中" />}
+          {acct.active && <span className="ac-active-badge">使用中</span>}
           <button title="刷新配额" className="ac-action-btn" onClick={fetchQuota}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
           </button>
