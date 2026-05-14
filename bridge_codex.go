@@ -24,7 +24,13 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logger.Info("[Codex] 收到请求 %s %s", r.Method, r.URL.Path)
-	logger.Debug("[Codex] 请求体: %s", string(body))
+	logger.Debug("[Codex] 请求体 (前500字符): %s", func() string {
+		s := string(body)
+		if len(s) > 500 {
+			return s[:500] + "..."
+		}
+		return s
+	}())
 
 	var req map[string]interface{}
 	if err := json.Unmarshal(body, &req); err != nil {
