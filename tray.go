@@ -1,9 +1,11 @@
 package main
 
 import (
+	stdruntime "runtime"
+
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"qoder2api/account"
 	"qoder2api/logger"
@@ -14,6 +16,9 @@ import (
 // 冲突无法稳定共存（详见提交记录），这里使用 wails 自带菜单作为操作入口。
 func (a *App) buildAppMenu() *menu.Menu {
 	m := menu.NewMenu()
+	if stdruntime.GOOS == "darwin" {
+		m.Append(menu.AppMenu())
+	}
 
 	// Qoder2API 主菜单（macOS 上会作为应用菜单出现）
 	app := m.AddSubmenu("Qoder2API")
@@ -42,7 +47,7 @@ func (a *App) buildAppMenu() *menu.Menu {
 
 	app.AddSeparator()
 	app.AddText("退出", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
-		runtime.Quit(a.ctx)
+		a.QuitApp()
 	})
 
 	// 账号子菜单
@@ -71,6 +76,10 @@ func (a *App) buildAppMenu() *menu.Menu {
 		}
 	}
 
+	if stdruntime.GOOS == "darwin" {
+		m.Append(menu.EditMenu())
+	}
+
 	return m
 }
 
@@ -79,8 +88,8 @@ func (a *App) refreshAppMenu() {
 	if a.ctx == nil {
 		return
 	}
-	runtime.MenuSetApplicationMenu(a.ctx, a.buildAppMenu())
-	runtime.MenuUpdateApplicationMenu(a.ctx)
+	wruntime.MenuSetApplicationMenu(a.ctx, a.buildAppMenu())
+	wruntime.MenuUpdateApplicationMenu(a.ctx)
 }
 
 // showWindow 唤起主窗口；ctx 尚未就绪时静默忽略。
@@ -88,6 +97,7 @@ func (a *App) showWindow() {
 	if a.ctx == nil {
 		return
 	}
-	runtime.WindowShow(a.ctx)
-	runtime.WindowUnminimise(a.ctx)
+	wruntime.Show(a.ctx)
+	wruntime.WindowShow(a.ctx)
+	wruntime.WindowUnminimise(a.ctx)
 }

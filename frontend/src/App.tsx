@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import appLogo from './assets/qoder.png'
 import AccountsPage from './pages/AccountsPage'
 import SettingsPage from './pages/SettingsPage'
 import LogsPage from './pages/LogsPage'
@@ -14,12 +15,14 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="topbar-left">
-          <img src="/src/assets/qoder.png" alt="Qoder" className="topbar-logo" />
           <span className="topbar-title">Qoder2API</span>
+          <StatusIndicator />
         </div>
-        <StatusIndicator />
       </header>
       <nav className="sidebar">
+        <div className="sidebar-brand" aria-hidden="true">
+          <img src={appLogo} alt="" className="sidebar-logo" />
+        </div>
         <button className={page === 'accounts' ? 'active' : ''} onClick={() => setPage('accounts')}>
           <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>

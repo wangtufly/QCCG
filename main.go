@@ -9,7 +9,6 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed all:frontend/dist
@@ -27,17 +26,13 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 246, G: 245, B: 242, A: 1},
-		Menu:             app.buildAppMenu(),
+		BackgroundColour:  &options.RGBA{R: 246, G: 245, B: 242, A: 1},
+		Menu:              app.buildAppMenu(),
+		HideWindowOnClose: true,
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
 			// startup 拿到 ctx 后再刷一次菜单，确保账号 / Bridge 状态准确
 			app.refreshAppMenu()
-		},
-		// 关闭按钮 → 隐藏窗口，应用驻留菜单栏 / Dock
-		OnBeforeClose: func(_ context.Context) bool {
-			runtime.WindowHide(app.ctx)
-			return true
 		},
 		Bind: []interface{}{
 			app,

@@ -63,7 +63,7 @@ export default function AccountsPage() {
       <div className="page-header">
         <h2>账号管理</h2>
         <button onClick={() => setShowAdd(true)} className="btn btn-primary">
-          + 添加账号
+          添加账号
         </button>
       </div>
 

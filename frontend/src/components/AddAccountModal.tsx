@@ -89,7 +89,7 @@ export default function AddAccountModal({ onClose }: Props) {
               onKeyDown={e => e.key === 'Enter' && handlePAT()}
               placeholder="粘贴 PAT Token..."
             />
-            <div className="actions">
+            <div className="actions actions-split">
               <button onClick={() => setMode('select')} className="btn btn-secondary">返回</button>
               <button
                 onClick={handlePAT}

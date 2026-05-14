@@ -33,11 +33,11 @@ export default function SettingsPage() {
       <div className="page-header">
         <h2>设置</h2>
         <button
-          className={`btn btn-primary ${saved ? 'saved' : ''}`}
+          className="btn btn-primary"
           onClick={handleSave}
           disabled={saved}
         >
-          {saved ? '✓ 已保存' : '保存设置'}
+          {saved ? '已保存' : '保存设置'}
         </button>
       </div>
 

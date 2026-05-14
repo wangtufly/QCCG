@@ -55,6 +55,9 @@ export default function StatusIndicator() {
 
   return (
     <div className="status-indicator-bar">
+      <button onClick={toggle} className="status-toggle-btn">
+        {status.running ? '停止' : '启动'}
+      </button>
       <div className={`status-dot-sm ${status.running ? 'running' : ''}`} />
       <span className="status-indicator-text">
         {status.running ? '运行中' : '已停止'}
@@ -64,9 +67,6 @@ export default function StatusIndicator() {
           {getApiUrl(status.port, status.api_mode)}
         </code>
       )}
-      <button onClick={toggle} className="status-toggle-btn">
-        {status.running ? '停止' : '启动'}
-      </button>
     </div>
   )
 }
