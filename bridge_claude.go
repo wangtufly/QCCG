@@ -36,8 +36,8 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 	incomingMsgs, _ := req["messages"].([]interface{})
 
 	// Claude format: tools use name+input_schema directly
-	// Convert to OpenAI-style for Qoder upstream, or pass through
-	tools := req["tools"]
+	// Convert to OpenAI-style for Qoder upstream
+	tools := convertClaudeToolsToOpenAI(req["tools"])
 	toolsEnabled := tools != nil
 
 	// If there's a system field, prepend it as a system message
@@ -102,18 +102,21 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 		})
 		writeSse("ping", map[string]interface{}{"type": "ping"})
 
-		var toolCallBuf []interface{}
+		// toolCallMerged: key=index, value=merged tool call
+		toolCallMerged := map[int]map[string]interface{}{}
 		contentBlockIndex := 0
+		streamContentLen := 0
 
 		err = b.callQoder(ctx, messages, model, tools, func(d bridgeDelta) {
 			if d.Content != "" {
+				streamContentLen += len(d.Content)
 				writeSse("content_block_delta", map[string]interface{}{
 					"type": "content_block_delta", "index": contentBlockIndex,
 					"delta": map[string]interface{}{"type": "text_delta", "text": d.Content},
 				})
 			}
 			if d.ToolCalls != nil {
-				toolCallBuf = append(toolCallBuf, d.ToolCalls...)
+				mergeToolCallChunks(toolCallMerged, d.ToolCalls)
 			}
 		})
 		if err != nil {
@@ -128,11 +131,8 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 		writeSse("content_block_stop", map[string]interface{}{"type": "content_block_stop", "index": contentBlockIndex})
 
 		// If there were tool calls, emit them as tool_use blocks
-		for i, tc := range toolCallBuf {
-			tcMap, _ := tc.(map[string]interface{})
-			if tcMap == nil {
-				continue
-			}
+		mergedTools := sortedToolCalls(toolCallMerged)
+		for i, tcMap := range mergedTools {
 			blockIdx := contentBlockIndex + 1 + i
 			fn, _ := tcMap["function"].(map[string]interface{})
 			toolId, _ := tcMap["id"].(string)
@@ -161,7 +161,7 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 		}
 
 		stopReason := "end_turn"
-		if len(toolCallBuf) > 0 {
+		if len(mergedTools) > 0 {
 			stopReason = "tool_use"
 		}
 
@@ -171,7 +171,7 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 			"usage": map[string]interface{}{"output_tokens": 0},
 		})
 		writeSse("message_stop", map[string]interface{}{"type": "message_stop"})
-		logger.Info("[Claude] stream 完成 stop=%s tool_calls=%d 耗时=%dms", stopReason, len(toolCallBuf), time.Since(startTime).Milliseconds())
+		logger.Info("[Claude] stream 完成 stop=%s content_len=%d tool_calls=%d 耗时=%dms", stopReason, streamContentLen, len(mergedTools), time.Since(startTime).Milliseconds())
 	} else {
 		var full strings.Builder
 		var toolCallBuf []interface{}
@@ -243,4 +243,100 @@ func writeClaudeErr(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 	w.Write(body)
+}
+
+// mergeToolCallChunks 将流式 tool_call 增量 chunk 按 index 合并
+func mergeToolCallChunks(merged map[int]map[string]interface{}, chunks []interface{}) {
+	for _, chunk := range chunks {
+		tc, ok := chunk.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		idx := 0
+		if idxF, ok := tc["index"].(float64); ok {
+			idx = int(idxF)
+		}
+		existing, exists := merged[idx]
+		if !exists {
+			existing = map[string]interface{}{}
+			merged[idx] = existing
+		}
+		if id, ok := tc["id"].(string); ok && id != "" {
+			existing["id"] = id
+		}
+		if t, ok := tc["type"].(string); ok && t != "" {
+			existing["type"] = t
+		}
+		if fn, ok := tc["function"].(map[string]interface{}); ok {
+			existingFn, _ := existing["function"].(map[string]interface{})
+			if existingFn == nil {
+				existingFn = map[string]interface{}{}
+				existing["function"] = existingFn
+			}
+			if name, ok := fn["name"].(string); ok && name != "" {
+				existingFn["name"] = name
+			}
+			if args, ok := fn["arguments"].(string); ok {
+				prev, _ := existingFn["arguments"].(string)
+				existingFn["arguments"] = prev + args
+			}
+		}
+	}
+}
+
+// sortedToolCalls 按 index 排序返回合并后的 tool calls
+func sortedToolCalls(merged map[int]map[string]interface{}) []map[string]interface{} {
+	if len(merged) == 0 {
+		return nil
+	}
+	maxIdx := 0
+	for idx := range merged {
+		if idx > maxIdx {
+			maxIdx = idx
+		}
+	}
+	result := make([]map[string]interface{}, 0, len(merged))
+	for i := 0; i <= maxIdx; i++ {
+		if tc, ok := merged[i]; ok {
+			result = append(result, tc)
+		}
+	}
+	return result
+}
+
+func convertClaudeToolsToOpenAI(raw interface{}) interface{} {
+	tools, ok := raw.([]interface{})
+	if !ok || len(tools) == 0 {
+		return nil
+	}
+	converted := make([]interface{}, 0, len(tools))
+	for _, t := range tools {
+		tm, ok := t.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		// 如果已经是 OpenAI 格式（有 type 字段），直接保留
+		if _, hasType := tm["type"]; hasType {
+			converted = append(converted, tm)
+			continue
+		}
+		// Claude 格式转 OpenAI 格式
+		fn := map[string]interface{}{
+			"name": tm["name"],
+		}
+		if desc, ok := tm["description"]; ok {
+			fn["description"] = desc
+		}
+		if schema, ok := tm["input_schema"]; ok {
+			fn["parameters"] = schema
+		}
+		converted = append(converted, map[string]interface{}{
+			"type":     "function",
+			"function": fn,
+		})
+	}
+	if len(converted) == 0 {
+		return nil
+	}
+	return converted
 }

@@ -71,7 +71,7 @@ func log(level Level, format string, args ...interface{}) {
 	mu.Unlock()
 
 	// 同时输出到控制台
-	fmt.Printf("[%s] %s\n", level, entry.Message)
+	fmt.Printf("[%s][%s] %s\n", entry.Time.Format("15:04:05.000"), level, entry.Message)
 }
 
 func Debug(format string, args ...interface{}) {

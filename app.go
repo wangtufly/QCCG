@@ -212,9 +212,15 @@ func (a *App) startBridgeWithAccount(acct *account.Account) error {
 	mux.HandleFunc("/v1/responses", b.handleCodexResponses)
 	logger.Info("Bridge: all endpoints registered")
 
+	// 全局请求日志中间件
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger.Info("[HTTP] %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+		mux.ServeHTTP(w, r)
+	})
+
 	srv := &http.Server{
 		Addr:    fmt.Sprintf("127.0.0.1:%d", a.bridgePort),
-		Handler: mux,
+		Handler: handler,
 	}
 
 	a.bridgeMu.Lock()
