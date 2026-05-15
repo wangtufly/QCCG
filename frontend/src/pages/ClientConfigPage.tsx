@@ -298,8 +298,11 @@ export default function ClientConfigPage() {
               className="config-editor"
               value={fileContent}
               onChange={e => { setFileContent(e.target.value); setFileDirty(true) }}
+              onInput={e => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
+              ref={el => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' } }}
               spellCheck={false}
               placeholder={fileLoading ? '加载中…' : '配置文件内容…'}
+              rows={1}
             />
             {fileError && (
               <div className="config-warning" style={{ marginTop: 0 }}>
