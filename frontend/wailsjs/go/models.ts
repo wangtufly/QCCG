@@ -128,6 +128,7 @@ export namespace account {
 	    log_level: string;
 	    quota_refresh_interval: number;
 	    model_mapping?: Record<string, string>;
+	    model_mappings?: Record<string, any>;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -140,6 +141,7 @@ export namespace account {
 	        this.log_level = source["log_level"];
 	        this.quota_refresh_interval = source["quota_refresh_interval"];
 	        this.model_mapping = source["model_mapping"];
+	        this.model_mappings = source["model_mappings"];
 	    }
 	}
 	export class Status {
@@ -205,6 +207,52 @@ export namespace logger {
 
 export namespace main {
 	
+	export class ClientConfig {
+	    type: string;
+	    name: string;
+	    icon: string;
+	    config_path: string;
+	    base_url: string;
+	    env_vars: string;
+	    model: string;
+	    applied: boolean;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClientConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.name = source["name"];
+	        this.icon = source["icon"];
+	        this.config_path = source["config_path"];
+	        this.base_url = source["base_url"];
+	        this.env_vars = source["env_vars"];
+	        this.model = source["model"];
+	        this.applied = source["applied"];
+	        this.error = source["error"];
+	    }
+	}
+	export class ClientConfigFile {
+	    path: string;
+	    content: string;
+	    format: string;
+	    existed: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClientConfigFile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.content = source["content"];
+	        this.format = source["format"];
+	        this.existed = source["existed"];
+	    }
+	}
 	export class QoderModel {
 	    key: string;
 	    display_name: string;

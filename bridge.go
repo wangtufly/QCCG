@@ -162,13 +162,13 @@ func deepCopyMap(m map[string]interface{}) map[string]interface{} {
 	return out
 }
 
-func (b *bridge) callQoder(ctx context.Context, messages []interface{}, model string, tools interface{}, onDelta func(bridgeDelta)) error {
+func (b *bridge) callQoder(ctx context.Context, agent string, messages []interface{}, model string, tools interface{}, onDelta func(bridgeDelta)) error {
 	// 将客户端模型名（claude-sonnet-4-6 等）映射成 Qoder 上游内部 model.key（auto/ultimate/performance/lite/efficient）。
 	// 上游对未知 key 会走兜底返回内容，但不会把这次调用计入 quota，这是「请求成功但 dashboard 无用量」的根因。
 	originalModel := model
-	model = mapModel(model)
+	model = mapModel(agent, model)
 	if model != originalModel {
-		logger.Debug("mapModel %s -> %s", originalModel, model)
+		logger.Debug("mapModel %s/%s -> %s", agent, originalModel, model)
 	}
 	body := deepCopyMap(b.templateBase)
 
@@ -267,6 +267,64 @@ func (b *bridge) callQoder(ctx context.Context, messages []interface{}, model st
 	})
 }
 
+// redactRequestBodyJSON 接收原始请求 JSON 字节，深拷贝后把可能含敏感对话内容的字段
+// （messages[*].content / system / input / tools[*].description 等）的字符串值替换为
+// `<redacted len=N>`，保留 JSON 结构和长度信息便于排查问题，但不泄露用户对话原文。
+//
+// 设计：
+//  1. 只对 string 类型脱敏，结构和数字保留
+//  2. 长度阈值：>32 才脱敏（避免把短角色名 "user" 也替换掉）
+//  3. 按字段名递归：content/text/system/input/instructions/prompt/description
+//  4. 失败时退回原始内容（脱敏只是日志辅助，不能影响主流程）
+func redactRequestBodyJSON(raw []byte) string {
+	var v interface{}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return string(raw)
+	}
+	redactValue(v, "")
+	out, err := json.Marshal(v)
+	if err != nil {
+		return string(raw)
+	}
+	return string(out)
+}
+
+// sensitiveFieldNames 命中后其字符串子值会被脱敏（递归进数组/对象继续处理）
+var sensitiveFieldNames = map[string]bool{
+	"content":      true,
+	"text":         true,
+	"system":       true,
+	"input":        true,
+	"instructions": true,
+	"prompt":       true,
+	"description":  true,
+}
+
+func redactValue(v interface{}, parentField string) {
+	switch x := v.(type) {
+	case map[string]interface{}:
+		for k, child := range x {
+			if s, ok := child.(string); ok {
+				if (sensitiveFieldNames[k] || sensitiveFieldNames[parentField]) && len(s) > 32 {
+					x[k] = fmt.Sprintf("<redacted len=%d>", len(s))
+				}
+				continue
+			}
+			redactValue(child, k)
+		}
+	case []interface{}:
+		for i, item := range x {
+			if s, ok := item.(string); ok {
+				if sensitiveFieldNames[parentField] && len(s) > 32 {
+					x[i] = fmt.Sprintf("<redacted len=%d>", len(s))
+				}
+				continue
+			}
+			redactValue(item, parentField)
+		}
+	}
+}
+
 func strVal(m map[string]interface{}, key string) string {
 	if v, ok := m[key].(string); ok {
 		return v
@@ -281,7 +339,21 @@ func strValDefault(m map[string]interface{}, key, def string) string {
 	return def
 }
 
-// defaultModelMapping 是当用户未在 Settings.ModelMapping 中配置时，bridge 的内置兜底映射。
+// inferAgent 根据模型名启发式推断 agent 类型，用于 chat/completions 这种多 agent 共用 endpoint
+// 时选择正确的映射桶。模型名命中关键字按 gemini > claude > 默认 codex。
+func inferAgent(model string) string {
+	low := strings.ToLower(model)
+	switch {
+	case strings.Contains(low, "gemini"):
+		return "gemini"
+	case strings.Contains(low, "claude"), strings.Contains(low, "sonnet"), strings.Contains(low, "opus"), strings.Contains(low, "haiku"):
+		return "claude"
+	default:
+		return "codex"
+	}
+}
+
+// defaultModelMapping 是当用户未在 Settings.ModelMappings 中配置时，bridge 的内置兜底映射。
 // 采用「家族关键字 → Qoder model.key」形式，依赖下面 mapModel 的双向 substring 模糊匹配，
 // 一条 "sonnet" 即可覆盖 claude-sonnet-4-6 / claude-sonnet-4-20250514 等所有变体。
 //
@@ -300,33 +372,46 @@ var defaultModelMapping = map[string]string{
 }
 
 // mapModel 解析顺序（参考 ccx 的 RedirectModel 算法）：
-//  1. 用户 Settings.ModelMapping 精确命中
-//  2. 用户 Settings.ModelMapping 双向 substring 模糊匹配（按 source 长度倒序，最长优先）
-//  3. defaultModelMapping 精确命中
-//  4. defaultModelMapping 双向 substring 模糊匹配
-//  5. ToLower 兜底（如客户端传 "Performance" 这种 display_name 大小写）
+//  1. 用户 Settings.ModelMappings[agent] 精确命中
+//  2. 用户 Settings.ModelMappings[agent] 双向 substring 模糊匹配（按 source 长度倒序，最长优先）
+//  3. 用户旧 Settings.ModelMapping (deprecated 扁平表) 命中
+//  4. defaultModelMapping 精确命中
+//  5. defaultModelMapping 双向 substring 模糊匹配
+//  6. ToLower 兜底（如客户端传 "Performance" 这种 display_name 大小写）
+//
+// agent 取值 "claude" / "codex" / "gemini"，由 handler 入口决定；空串表示未知 agent，跳过 agent 桶。
 //
 // 双向 substring 含义：source 包含 model（短关键字匹配长模型名，如 "sonnet" → "claude-sonnet-4-6"）
 // 或 model 包含 source（长别名匹配短模型名，反向也能命中）。
-func mapModel(model string) string {
+func mapModel(agent, model string) string {
 	if model == "" {
 		return model
 	}
 
-	// 用户配置优先
-	settings, err := account.LoadSettings()
-	if err == nil && settings != nil && len(settings.ModelMapping) > 0 {
+	settings, _ := account.LoadSettings()
+
+	// 1. agent 维度的用户配置优先
+	if settings != nil && agent != "" {
+		if table, ok := settings.ModelMappings[agent]; ok && len(table) > 0 {
+			if mapped := lookupMapping(model, table); mapped != "" {
+				return mapped
+			}
+		}
+	}
+
+	// 2. 兼容旧的扁平 ModelMapping（仅当未配置 agent 桶时生效）
+	if settings != nil && len(settings.ModelMapping) > 0 {
 		if mapped := lookupMapping(model, settings.ModelMapping); mapped != "" {
 			return mapped
 		}
 	}
 
-	// 内置默认映射兜底
+	// 3. 内置默认映射兜底
 	if mapped := lookupMapping(model, defaultModelMapping); mapped != "" {
 		return mapped
 	}
 
-	// 大小写归一化兜底（处理客户端直接传 "Performance" 这种）
+	// 4. 大小写归一化兜底（处理客户端直接传 "Performance" 这种）
 	return strings.ToLower(model)
 }
 

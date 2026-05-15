@@ -32,16 +32,29 @@ echo "==> ad-hoc 签名 .app"
 codesign --force --deep --sign - "${APP_BUNDLE}"
 codesign --verify --deep --strict --verbose=2 "${APP_BUNDLE}"
 
-# ---------- 3. 生成 dmg ----------
-echo "==> 创建 dmg"
+# ---------- 3. 生成 dmg（create-dmg）----------
+# 使用 create-dmg 替代 hdiutil，自动生成带 Applications 软链的拖拽安装窗口
+echo "==> 创建 dmg (create-dmg)"
 rm -f "${DMG_PATH}"
-hdiutil create \
-  -volname "${PRODUCT_NAME}" \
-  -srcfolder "${APP_BUNDLE}" \
-  -ov \
-  -format UDZO \
-  -imagekey zlib-level=9 \
-  "${DMG_PATH}"
+# create-dmg 在校验阶段失败时会返回非零，但 dmg 实际已生成，所以暂时关 set -e
+set +e
+create-dmg \
+  --volname "${PRODUCT_NAME}" \
+  --window-pos 200 120 \
+  --window-size 600 400 \
+  --icon-size 100 \
+  --icon "${APP_NAME}.app" 175 190 \
+  --hide-extension "${APP_NAME}.app" \
+  --app-drop-link 425 190 \
+  --no-internet-enable \
+  "${DMG_PATH}" \
+  "${APP_BUNDLE}"
+CREATE_DMG_EXIT=$?
+set -e
+if [[ ! -f "${DMG_PATH}" ]]; then
+  echo "create-dmg 失败 (exit ${CREATE_DMG_EXIT}): 未生成 ${DMG_PATH}"
+  exit 1
+fi
 
 # ---------- 4. 给 dmg 自身也加 ad-hoc 签名 ----------
 echo "==> ad-hoc 签名 dmg"

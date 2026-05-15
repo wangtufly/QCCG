@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +30,15 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// 文件日志在 Info("Application started") 之前初始化，确保启动期日志也能落盘
+	if home, err := os.UserHomeDir(); err == nil {
+		logDir := filepath.Join(home, ".qoder2api", "logs")
+		if err := logger.InitFile(logDir); err != nil {
+			fmt.Fprintf(os.Stderr, "[logger] init file sink failed: %v (logs will only be in memory + stdout)\n", err)
+		}
+	}
+
 	logger.Info("Application started")
 
 	settings, err := account.LoadSettings()

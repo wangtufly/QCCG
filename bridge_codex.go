@@ -23,14 +23,9 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logger.Info("[Codex] 收到请求 %s %s", r.Method, r.URL.Path)
-	logger.Debug("[Codex] 请求体 (前500字符): %s", func() string {
-		s := string(body)
-		if len(s) > 500 {
-			return s[:500] + "..."
-		}
-		return s
-	}())
+	reqID := newUUID()[:8]
+	logger.Info("[Codex][%s] 收到请求 %s %s body_size=%d", reqID, r.Method, r.URL.Path, len(body))
+	logger.Debug("[Codex][%s] 请求体（敏感字段已脱敏）: %s", reqID, redactRequestBodyJSON(body))
 
 	var req map[string]interface{}
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -48,7 +43,7 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 	prompt := extractLatestUserPrompt(incomingMsgs)
 	messages := buildQoderMessages(b.templateMessages(), incomingMsgs, prompt, toolsEnabled)
 
-	logger.Info("[Codex] model=%s stream=%v tools=%v msgs=%d", model, stream, toolsEnabled, len(incomingMsgs))
+	logger.Info("[Codex][%s] model=%s stream=%v tools=%v msgs=%d", reqID, model, stream, toolsEnabled, len(incomingMsgs))
 
 	respId := "resp_" + newRequestId()
 	ctx := r.Context()
@@ -100,7 +95,7 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 
 		var toolCallBuf []interface{}
 
-		err = b.callQoder(ctx, messages, model, tools, func(d bridgeDelta) {
+		err = b.callQoder(ctx, "codex", messages, model, tools, func(d bridgeDelta) {
 			if d.Content != "" {
 				writeEvent("response.output_text.delta", map[string]interface{}{
 					"type":          "response.output_text.delta",
@@ -115,7 +110,7 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 			}
 		})
 		if err != nil {
-			logger.Error("[Codex] stream 请求失败: %v (耗时 %dms)", err, time.Since(startTime).Milliseconds())
+			logger.Error("[Codex][%s] stream 请求失败: %v (耗时 %dms)", reqID, err, time.Since(startTime).Milliseconds())
 			writeEvent("error", map[string]interface{}{
 				"type":    "error",
 				"message": err.Error(),
@@ -177,11 +172,11 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 				},
 			},
 		})
-		logger.Info("[Codex] stream 完成 tool_calls=%d 耗时=%dms", len(toolCallBuf), time.Since(startTime).Milliseconds())
+		logger.Info("[Codex][%s] stream 完成 tool_calls=%d 耗时=%dms", reqID, len(toolCallBuf), time.Since(startTime).Milliseconds())
 	} else {
 		var full strings.Builder
 		var toolCallBuf []interface{}
-		err = b.callQoder(ctx, messages, model, tools, func(d bridgeDelta) {
+		err = b.callQoder(ctx, "codex", messages, model, tools, func(d bridgeDelta) {
 			if d.Content != "" {
 				full.WriteString(d.Content)
 			}
@@ -190,7 +185,7 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 			}
 		})
 		if err != nil {
-			logger.Error("[Codex] 请求失败: %v (耗时 %dms)", err, time.Since(startTime).Milliseconds())
+			logger.Error("[Codex][%s] 请求失败: %v (耗时 %dms)", reqID, err, time.Since(startTime).Milliseconds())
 			writeCodexErr(w, fmt.Errorf("request failed: %w", err))
 			return
 		}
@@ -229,8 +224,8 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 				"input_tokens": 0, "output_tokens": 0, "total_tokens": 0,
 			},
 		}
-		logger.Info("[Codex] 完成 content_len=%d tool_calls=%d 耗时=%dms", full.Len(), len(toolCallBuf), time.Since(startTime).Milliseconds())
-		logger.Debug("[Codex] 响应体: %s", func() string { d, _ := json.Marshal(resp); return string(d) }())
+		logger.Info("[Codex][%s] 完成 content_len=%d tool_calls=%d 耗时=%dms", reqID, full.Len(), len(toolCallBuf), time.Since(startTime).Milliseconds())
+		logger.Debug("[Codex][%s] 响应体: %s", reqID, func() string { d, _ := json.Marshal(resp); return string(d) }())
 		writeJSON(w, resp)
 	}
 }

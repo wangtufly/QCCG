@@ -9,6 +9,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
+
+	"qoder2api/logger"
 )
 
 //go:embed all:frontend/dist
@@ -33,6 +35,10 @@ func main() {
 			app.startup(ctx)
 			// startup 拿到 ctx 后再刷一次菜单，确保账号 / Bridge 状态准确
 			app.refreshAppMenu()
+		},
+		OnShutdown: func(ctx context.Context) {
+			logger.Info("Application shutting down")
+			logger.Close()
 		},
 		Bind: []interface{}{
 			app,

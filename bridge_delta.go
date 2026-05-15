@@ -19,12 +19,12 @@ func (d bridgeDelta) isEmpty() bool {
 func extractDelta(dataLine string) bridgeDelta {
 	var wrapper map[string]interface{}
 	if err := json.Unmarshal([]byte(dataLine), &wrapper); err != nil {
-		logger.Debug("[delta] unmarshal wrapper failed: %v, raw=%s", err, truncate(dataLine, 200))
+		logger.Debug("[delta] unmarshal wrapper failed: %v, raw=%s", err, dataLine)
 		return bridgeDelta{}
 	}
 	inner, _ := wrapper["body"].(string)
 	if inner == "" {
-		logger.Debug("[delta] no body field, keys=%v, raw=%s", mapKeys(wrapper), truncate(dataLine, 200))
+		logger.Debug("[delta] no body field, keys=%v, raw=%s", mapKeys(wrapper), dataLine)
 		return bridgeDelta{}
 	}
 	var innerJSON map[string]interface{}
@@ -49,7 +49,7 @@ func extractDelta(dataLine string) bridgeDelta {
 			return bridgeDelta{Role: role, Content: content, ToolCalls: toolCalls}
 		}
 	}
-	logger.Debug("[delta] no valid choices found, inner=%s", truncate(inner, 300))
+	logger.Debug("[delta] no valid choices found, inner=%s", inner)
 	return bridgeDelta{}
 }
 

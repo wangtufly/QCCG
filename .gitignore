@@ -1,0 +1,40 @@
+# 编译产物
+qoder2api
+*.exe
+*.app
+*.dmg
+
+# Wails 构建目录
+build/bin/
+
+# Go
+go.sum
+
+# 前端
+frontend/dist/
+frontend/node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-*
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 日志
+*.log
+
+# 临时文件
+tmp/
+temp/
+
+# 文档(如果不需版本控制)
+docs/
+
+# 工具目录
+cmd/

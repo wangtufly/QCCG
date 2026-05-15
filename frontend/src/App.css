@@ -1018,3 +1018,414 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ========== 客户端配置 - 横向 Tab（紧凑版，与 sidebar 同色但更精简） ========== */
+.client-tabs {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  padding: 4px;            /* 总高 = 4 + 30 + 4 = 38px，紧凑不臃肿 */
+  background: var(--bg-sidebar);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sidebar);
+  margin-bottom: 16px;
+  width: fit-content;
+  align-items: center;
+}
+
+.client-tabs button {
+  height: 30px;
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  position: relative;
+  white-space: nowrap;
+}
+
+.client-tabs button:hover {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+
+.client-tabs button.active {
+  background: var(--primary);
+  color: white;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.client-tabs .tab-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+  flex-shrink: 0;
+}
+
+/* 黑色品牌 logo 在 active 绿底下反白 */
+.client-tabs button.active .tab-icon {
+  filter: brightness(0) invert(1);
+}
+
+/* 已配置状态用右上角小绿点（绝对定位避免影响布局） */
+.client-tabs .tab-applied-dot {
+  display: block;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 2px var(--bg-sidebar);
+}
+
+.client-tabs button.active .tab-applied-dot {
+  background: white;
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
+/* ========== 客户端配置 - 卡片 ========== */
+.client-config-page {
+  /* 父级 .content 已设 padding: 16px 32px 28px，这里不再叠加 */
+}
+
+.config-loading {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.config-note {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--primary-light);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.config-note .note-icon {
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+.config-warning {
+  padding: 12px 14px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 10px;
+  margin-bottom: 16px;
+  color: #b45309;
+  font-size: 13px;
+}
+
+.config-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.config-card.applied {
+  border-color: var(--primary);
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.12);
+}
+
+.config-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+}
+.config-card-icon {
+  width: 32px;
+  height: 32px;
+  display: block;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+.config-card-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.config-card-header p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.config-status-dot {
+  margin-left: auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  opacity: 0.4;
+}
+.config-status-dot.active {
+  background: var(--primary);
+  opacity: 1;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.18);
+}
+
+.config-card-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--bg-card);
+}
+
+.config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.config-field label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.config-field .full-width {
+  width: 100%;
+}
+
+.config-url,
+.config-path {
+  display: inline-block;
+  padding: 8px 12px;
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.env-var-box {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.env-var-box code {
+  flex: 1;
+  display: block;
+  padding: 10px 12px;
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.6;
+}
+.env-var-box .btn {
+  white-space: nowrap;
+  align-self: flex-start;
+}
+
+.config-card-footer {
+  display: flex;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-app);
+}
+
+.copy-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  background: var(--text-primary);
+  color: #fff;
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: var(--shadow-md);
+  z-index: 1000;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+  height: auto;
+}
+
+/* 配置文件编辑器：等宽字体 textarea，淡边框灰底 */
+.config-editor {
+  width: 100%;
+  min-height: 240px;
+  max-height: 480px;
+  padding: 12px 14px;
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.config-editor:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+/* 配置文件区段的小标题（在同一卡片内做视觉分隔，无需新 card） */
+.config-section-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.config-section-divider .section-title {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.config-section-divider .meta {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.config-section-divider .divider-spacer {
+  flex: 1;
+  min-width: 0;
+}
+.config-section-divider .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* 配置文件标题旁的路径展示（与 section-title 同行，唯一可压缩元素） */
+.config-section-divider .section-path {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  background: transparent;
+  padding: 0;
+  font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 40px;
+}
+
+/* 卡片头部的 emoji 兜底（仅在无品牌 SVG 时使用） */
+.config-card-icon-emoji {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* 模型映射区段（嵌入 client config card 内，独立于 config-section-divider） */
+.mapping-section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+}
+.mapping-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-wrap: nowrap;
+}
+.mapping-section-header .section-title {
+  flex-shrink: 0;
+}
+.mapping-section-header .meta {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.mapping-section-header .divider-spacer {
+  flex: 1;
+}
+
+/* 模型映射表（嵌入在 client config card 内） */
+.mapping-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.mapping-table td {
+  padding: 4px;
+  vertical-align: middle;
+}
+.mapping-table td .setting-input,
+.mapping-table td .setting-select {
+  width: 100%;
+}
+.mapping-table td.arrow {
+  text-align: center;
+  color: var(--text-muted);
+  width: 28px;
+}
+.mapping-table td.row-actions {
+  width: 32px;
+  text-align: right;
+}
+
+/* 行内 icon 按钮（如映射表的删除） */
+.btn-icon-sm {
+  border: none;
+  background: transparent;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+.btn-icon-sm:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.mapping-empty {
+  padding: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg-app);
+}
+

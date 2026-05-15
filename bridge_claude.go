@@ -23,14 +23,9 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logger.Info("[Claude] 收到请求 %s %s", r.Method, r.URL.Path)
-	logger.Debug("[Claude] 请求体 (前500字符): %s", func() string {
-		s := string(body)
-		if len(s) > 500 {
-			return s[:500] + "..."
-		}
-		return s
-	}())
+	reqID := newUUID()[:8]
+	logger.Info("[Claude][%s] 收到请求 %s %s body_size=%d", reqID, r.Method, r.URL.Path, len(body))
+	logger.Debug("[Claude][%s] 请求体（敏感字段已脱敏）: %s", reqID, redactRequestBodyJSON(body))
 
 	var req map[string]interface{}
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -73,7 +68,7 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 	prompt := extractLatestUserPrompt(incomingMsgs)
 	messages := buildQoderMessages(b.templateMessages(), incomingMsgs, prompt, toolsEnabled)
 
-	logger.Info("[Claude] model=%s stream=%v tools=%v msgs=%d", model, stream, toolsEnabled, len(incomingMsgs))
+	logger.Info("[Claude][%s] model=%s stream=%v tools=%v msgs=%d", reqID, model, stream, toolsEnabled, len(incomingMsgs))
 
 	msgId := "msg_" + newRequestId()
 	ctx := r.Context()
@@ -113,7 +108,7 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 		contentBlockIndex := 0
 		streamContentLen := 0
 
-		err = b.callQoder(ctx, messages, model, tools, func(d bridgeDelta) {
+		err = b.callQoder(ctx, "claude", messages, model, tools, func(d bridgeDelta) {
 			if d.Content != "" {
 				streamContentLen += len(d.Content)
 				writeSse("content_block_delta", map[string]interface{}{
@@ -126,7 +121,7 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 			}
 		})
 		if err != nil {
-			logger.Error("[Claude] stream 请求失败: %v (耗时 %dms)", err, time.Since(startTime).Milliseconds())
+			logger.Error("[Claude][%s] stream 请求失败: %v (耗时 %dms)", reqID, err, time.Since(startTime).Milliseconds())
 			fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
 			if flusher != nil {
 				flusher.Flush()
@@ -177,11 +172,11 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 			"usage": map[string]interface{}{"output_tokens": 0},
 		})
 		writeSse("message_stop", map[string]interface{}{"type": "message_stop"})
-		logger.Info("[Claude] stream 完成 stop=%s content_len=%d tool_calls=%d 耗时=%dms", stopReason, streamContentLen, len(mergedTools), time.Since(startTime).Milliseconds())
+		logger.Info("[Claude][%s] stream 完成 stop=%s content_len=%d tool_calls=%d 耗时=%dms", reqID, stopReason, streamContentLen, len(mergedTools), time.Since(startTime).Milliseconds())
 	} else {
 		var full strings.Builder
 		var toolCallBuf []interface{}
-		err = b.callQoder(ctx, messages, model, tools, func(d bridgeDelta) {
+		err = b.callQoder(ctx, "claude", messages, model, tools, func(d bridgeDelta) {
 			if d.Content != "" {
 				full.WriteString(d.Content)
 			}
@@ -190,7 +185,7 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 			}
 		})
 		if err != nil {
-			logger.Error("[Claude] 请求失败: %v (耗时 %dms)", err, time.Since(startTime).Milliseconds())
+			logger.Error("[Claude][%s] 请求失败: %v (耗时 %dms)", reqID, err, time.Since(startTime).Milliseconds())
 			writeClaudeErr(w, fmt.Errorf("request failed: %w", err))
 			return
 		}
@@ -232,8 +227,8 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 			"content": content,
 			"usage":   map[string]interface{}{"input_tokens": 0, "output_tokens": 0},
 		}
-		logger.Info("[Claude] 完成 stop=%s content_len=%d tool_calls=%d 耗时=%dms", stopReason, full.Len(), len(toolCallBuf), time.Since(startTime).Milliseconds())
-		logger.Debug("[Claude] 响应体: %s", func() string { d, _ := json.Marshal(resp); return string(d) }())
+		logger.Info("[Claude][%s] 完成 stop=%s content_len=%d tool_calls=%d 耗时=%dms", reqID, stopReason, full.Len(), len(toolCallBuf), time.Since(startTime).Milliseconds())
+		logger.Debug("[Claude][%s] 响应体: %s", reqID, func() string { d, _ := json.Marshal(resp); return string(d) }())
 		writeJSON(w, resp)
 	}
 }

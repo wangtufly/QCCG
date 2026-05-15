@@ -23,14 +23,9 @@ func (b *bridge) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logger.Info("[Chat] 收到请求 %s %s", r.Method, r.URL.Path)
-	logger.Debug("[Chat] 请求体 (前500字符): %s", func() string {
-		s := string(body)
-		if len(s) > 500 {
-			return s[:500] + "..."
-		}
-		return s
-	}())
+	reqID := newUUID()[:8]
+	logger.Info("[Chat][%s] 收到请求 %s %s body_size=%d", reqID, r.Method, r.URL.Path, len(body))
+	logger.Debug("[Chat][%s] 请求体（敏感字段已脱敏）: %s", reqID, redactRequestBodyJSON(body))
 
 	var req map[string]interface{}
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -43,7 +38,7 @@ func (b *bridge) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	tools := req["tools"]
 	toolsEnabled := tools != nil
 
-	logger.Info("[Chat] model=%s stream=%v tools=%v msgs=%d", model, stream, toolsEnabled, len(incomingMsgs))
+	logger.Info("[Chat][%s] model=%s stream=%v tools=%v msgs=%d", reqID, model, stream, toolsEnabled, len(incomingMsgs))
 
 	prompt := extractLatestUserPrompt(incomingMsgs)
 	messages := buildQoderMessages(b.templateMessages(), incomingMsgs, prompt, toolsEnabled)
@@ -61,7 +56,7 @@ func (b *bridge) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 		var toolCallBuf []interface{}
 
-		err = b.callQoder(ctx, messages, model, tools, func(d bridgeDelta) {
+		err = b.callQoder(ctx, inferAgent(model), messages, model, tools, func(d bridgeDelta) {
 			chunk := makeChatChunk(reqId, created, model)
 			choices := chunk["choices"].([]interface{})
 			delta := choices[0].(map[string]interface{})["delta"].(map[string]interface{})
@@ -80,7 +75,7 @@ func (b *bridge) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			}
 		})
 		if err != nil {
-			logger.Error("[Chat] stream 请求失败: %v (耗时 %dms)", err, time.Since(startTime).Milliseconds())
+			logger.Error("[Chat][%s] stream 请求失败: %v (耗时 %dms)", reqID, err, time.Since(startTime).Milliseconds())
 			errData, _ := json.Marshal(map[string]interface{}{
 				"error": map[string]interface{}{"message": err.Error(), "type": "qoder_error"},
 			})
@@ -103,11 +98,11 @@ func (b *bridge) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		if flusher != nil {
 			flusher.Flush()
 		}
-		logger.Info("[Chat] stream 完成 finish=%s tool_calls=%d 耗时=%dms", finishReason, len(toolCallBuf), time.Since(startTime).Milliseconds())
+		logger.Info("[Chat][%s] stream 完成 finish=%s tool_calls=%d 耗时=%dms", reqID, finishReason, len(toolCallBuf), time.Since(startTime).Milliseconds())
 	} else {
 		var full strings.Builder
 		var toolCallBuf []interface{}
-		err = b.callQoder(ctx, messages, model, tools, func(d bridgeDelta) {
+		err = b.callQoder(ctx, inferAgent(model), messages, model, tools, func(d bridgeDelta) {
 			if d.Content != "" {
 				full.WriteString(d.Content)
 			}
@@ -116,7 +111,7 @@ func (b *bridge) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			}
 		})
 		if err != nil {
-			logger.Error("[Chat] 请求失败: %v (耗时 %dms)", err, time.Since(startTime).Milliseconds())
+			logger.Error("[Chat][%s] 请求失败: %v (耗时 %dms)", reqID, err, time.Since(startTime).Milliseconds())
 			writeErr(w, fmt.Errorf("request failed: %w", err))
 			return
 		}
@@ -137,8 +132,8 @@ func (b *bridge) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			},
 			"usage": map[string]interface{}{"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
 		}
-		logger.Info("[Chat] 完成 finish=%s content_len=%d tool_calls=%d 耗时=%dms", finishReason, full.Len(), len(toolCallBuf), time.Since(startTime).Milliseconds())
-		logger.Debug("[Chat] 响应体: %s", func() string { d, _ := json.Marshal(resp); return string(d) }())
+		logger.Info("[Chat][%s] 完成 finish=%s content_len=%d tool_calls=%d 耗时=%dms", reqID, finishReason, full.Len(), len(toolCallBuf), time.Since(startTime).Milliseconds())
+		logger.Debug("[Chat][%s] 响应体: %s", reqID, func() string { d, _ := json.Marshal(resp); return string(d) }())
 		writeJSON(w, resp)
 	}
 }

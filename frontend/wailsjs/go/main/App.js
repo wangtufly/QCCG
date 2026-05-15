@@ -6,6 +6,10 @@ export function AddAccountByPAT(arg1) {
   return window['go']['main']['App']['AddAccountByPAT'](arg1);
 }
 
+export function ApplyClientConfig(arg1, arg2) {
+  return window['go']['main']['App']['ApplyClientConfig'](arg1, arg2);
+}
+
 export function CancelOAuthLogin(arg1) {
   return window['go']['main']['App']['CancelOAuthLogin'](arg1);
 }
@@ -24,6 +28,10 @@ export function DeleteAccount(arg1) {
 
 export function GetAccountQuota(arg1) {
   return window['go']['main']['App']['GetAccountQuota'](arg1);
+}
+
+export function GetClientConfigs() {
+  return window['go']['main']['App']['GetClientConfigs']();
 }
 
 export function GetLogs(arg1) {
@@ -54,8 +62,20 @@ export function QuitApp() {
   return window['go']['main']['App']['QuitApp']();
 }
 
+export function ReadClientConfigFile(arg1) {
+  return window['go']['main']['App']['ReadClientConfigFile'](arg1);
+}
+
+export function RemoveClientConfig(arg1) {
+  return window['go']['main']['App']['RemoveClientConfig'](arg1);
+}
+
 export function ReorderAccounts(arg1) {
   return window['go']['main']['App']['ReorderAccounts'](arg1);
+}
+
+export function SaveClientConfigFile(arg1, arg2) {
+  return window['go']['main']['App']['SaveClientConfigFile'](arg1, arg2);
 }
 
 export function SaveSettings(arg1) {

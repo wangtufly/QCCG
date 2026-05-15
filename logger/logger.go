@@ -1,7 +1,12 @@
 package logger
 
 import (
+	"compress/gzip"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -23,9 +28,151 @@ type Entry struct {
 var (
 	mu           sync.RWMutex
 	entries      []Entry
-	maxEntries   = 500
+	maxEntries   = 2000 // 内存中保留的日志条数；前端 LogsPage 直接读这里
 	currentLevel = LevelInfo
+
+	// 文件 sink 状态
+	fileMu      sync.Mutex
+	fileDir     string    // 日志目录，空表示未启用文件 sink
+	fileHandle  *os.File  // 当天日志句柄
+	fileDate    string    // 当前打开文件对应的 YYYYMMDD，跨日时关闭并新建
+	retainDays  = 7       // 保留最近 N 天的归档（明文 + .gz 一起算）
 )
+
+// InitFile 启动文件 sink。
+// dir 是日志目录（推荐 ~/.qoder2api/logs），不存在会自动创建。
+// 启动时会做两件事：
+//  1. 把昨天及更早的明文 .log 压成 .log.gz（跨日归档）
+//  2. 删除超过 retainDays 的归档文件
+//
+// 返回错误时调用方应仅记 stderr 警告并继续运行（保持内存+stdout 双 sink 不影响业务）。
+func InitFile(dir string) error {
+	if dir == "" {
+		return fmt.Errorf("empty log dir")
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("mkdir log dir: %w", err)
+	}
+	fileMu.Lock()
+	fileDir = dir
+	fileMu.Unlock()
+
+	// 启动时归档历史明文 + 清理过期
+	archiveOldPlainLogs(dir)
+	cleanupOldArchives(dir, retainDays)
+
+	// 立即打开当天文件，验证可写
+	fileMu.Lock()
+	_, err := ensureFile()
+	fileMu.Unlock()
+	if err != nil {
+		fileMu.Lock()
+		fileDir = ""
+		fileMu.Unlock()
+		return err
+	}
+	return nil
+}
+
+// Close 关闭文件 sink，应用退出前调用一次。
+func Close() {
+	fileMu.Lock()
+	defer fileMu.Unlock()
+	if fileHandle != nil {
+		_ = fileHandle.Close()
+		fileHandle = nil
+		fileDate = ""
+	}
+}
+
+// ensureFile 确保 fileHandle 指向今天的日志文件。跨日时会关闭旧句柄、
+// 把昨天的明文压成 .gz、再开新文件。**调用方必须已持有 fileMu。**
+func ensureFile() (*os.File, error) {
+	if fileDir == "" {
+		return nil, fmt.Errorf("file sink not initialized")
+	}
+	today := time.Now().Format("20060102")
+	if fileHandle != nil && fileDate == today {
+		return fileHandle, nil
+	}
+	// 关闭旧文件并归档
+	if fileHandle != nil {
+		_ = fileHandle.Close()
+		fileHandle = nil
+		// 跨日触发归档（异步即可，归档/清理是 IO 操作，不在持锁内做）
+		go func(dir string) {
+			archiveOldPlainLogs(dir)
+			cleanupOldArchives(dir, retainDays)
+		}(fileDir)
+	}
+	path := filepath.Join(fileDir, "qoder2api-"+today+".log")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	fileHandle = f
+	fileDate = today
+	return f, nil
+}
+
+// archiveOldPlainLogs 把目录里所有非今天的 qoder2api-YYYYMMDD.log 压成 .log.gz 后删除原文件。
+func archiveOldPlainLogs(dir string) {
+	today := time.Now().Format("20060102")
+	matches, _ := filepath.Glob(filepath.Join(dir, "qoder2api-*.log"))
+	for _, p := range matches {
+		base := filepath.Base(p)
+		// qoder2api-YYYYMMDD.log → 取出 YYYYMMDD
+		if len(base) < len("qoder2api-YYYYMMDD.log") {
+			continue
+		}
+		datePart := strings.TrimPrefix(strings.TrimSuffix(base, ".log"), "qoder2api-")
+		if datePart == today {
+			continue
+		}
+		if err := gzipFile(p, p+".gz"); err == nil {
+			_ = os.Remove(p)
+		}
+	}
+}
+
+func gzipFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	gz := gzip.NewWriter(out)
+	if _, err := io.Copy(gz, in); err != nil {
+		_ = gz.Close()
+		return err
+	}
+	return gz.Close()
+}
+
+// cleanupOldArchives 删除 retainDays 之外的 .log 和 .log.gz 文件。
+func cleanupOldArchives(dir string, retain int) {
+	if retain <= 0 {
+		return
+	}
+	cutoff := time.Now().AddDate(0, 0, -retain)
+	for _, glob := range []string{"qoder2api-*.log", "qoder2api-*.log.gz"} {
+		matches, _ := filepath.Glob(filepath.Join(dir, glob))
+		for _, p := range matches {
+			st, err := os.Stat(p)
+			if err != nil {
+				continue
+			}
+			if st.ModTime().Before(cutoff) {
+				_ = os.Remove(p)
+			}
+		}
+	}
+}
 
 func SetLevel(level string) {
 	mu.Lock()
@@ -42,27 +189,21 @@ func GetLevel() string {
 func shouldLog(level Level) bool {
 	mu.RLock()
 	defer mu.RUnlock()
-
-	levelPriority := map[Level]int{
-		LevelDebug: 0,
-		LevelInfo:  1,
-		LevelError: 2,
-	}
-
-	return levelPriority[level] >= levelPriority[currentLevel]
+	priority := map[Level]int{LevelDebug: 0, LevelInfo: 1, LevelError: 2}
+	return priority[level] >= priority[currentLevel]
 }
 
 func log(level Level, format string, args ...interface{}) {
 	if !shouldLog(level) {
 		return
 	}
-
 	entry := Entry{
 		Time:    time.Now(),
 		Level:   level,
 		Message: fmt.Sprintf(format, args...),
 	}
 
+	// sink 1: 内存环
 	mu.Lock()
 	entries = append(entries, entry)
 	if len(entries) > maxEntries {
@@ -70,38 +211,42 @@ func log(level Level, format string, args ...interface{}) {
 	}
 	mu.Unlock()
 
-	// 同时输出到控制台
-	fmt.Printf("[%s][%s] %s\n", entry.Time.Format("15:04:05.000"), level, entry.Message)
+	// sink 2: stdout（dev 模式 / 终端启动时可见）
+	line := fmt.Sprintf("[%s][%s] %s", entry.Time.Format("15:04:05.000"), level, entry.Message)
+	fmt.Println(line)
+
+	// sink 3: 文件（GUI 启动时事后翻日志的唯一入口）
+	fileMu.Lock()
+	if f, err := ensureFile(); err == nil {
+		_, _ = f.WriteString(line + "\n")
+	}
+	fileMu.Unlock()
 }
 
-func Debug(format string, args ...interface{}) {
-	log(LevelDebug, format, args...)
-}
-
-func Info(format string, args ...interface{}) {
-	log(LevelInfo, format, args...)
-}
-
-func Error(format string, args ...interface{}) {
-	log(LevelError, format, args...)
-}
+func Debug(format string, args ...interface{}) { log(LevelDebug, format, args...) }
+func Info(format string, args ...interface{})  { log(LevelInfo, format, args...) }
+func Error(format string, args ...interface{}) { log(LevelError, format, args...) }
 
 func GetLogs(limit int) []Entry {
 	mu.RLock()
 	defer mu.RUnlock()
-
 	if limit <= 0 || limit > len(entries) {
 		limit = len(entries)
 	}
-
 	start := len(entries) - limit
 	if start < 0 {
 		start = 0
 	}
-
 	result := make([]Entry, limit)
 	copy(result, entries[start:])
 	return result
+}
+
+// LogDir 返回当前生效的日志目录（前端「打开日志文件夹」用）。空字符串表示文件 sink 未启用。
+func LogDir() string {
+	fileMu.Lock()
+	defer fileMu.Unlock()
+	return fileDir
 }
 
 func Clear() {

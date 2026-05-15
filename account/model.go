@@ -30,11 +30,12 @@ type Status struct {
 }
 
 type Settings struct {
-	Port                 int               `json:"port"`
-	AutoStart            bool              `json:"auto_start"`
-	LogLevel             string            `json:"log_level"`               // "info" | "debug" | "error"
-	QuotaRefreshInterval int               `json:"quota_refresh_interval"`  // 秒，0=不自动刷新
-	ModelMapping         map[string]string `json:"model_mapping,omitempty"` // 客户端模型名 → Qoder model.key 映射，命中不到时按 defaultModelMapping 兜底
+	Port                 int                          `json:"port"`
+	AutoStart            bool                         `json:"auto_start"`
+	LogLevel             string                       `json:"log_level"`               // "info" | "debug" | "error"
+	QuotaRefreshInterval int                          `json:"quota_refresh_interval"`  // 秒，0=不自动刷新
+	ModelMapping         map[string]string            `json:"model_mapping,omitempty"` // [DEPRECATED] 旧扁平映射（向后兼容，启动时自动迁移到 ModelMappings["claude"]）
+	ModelMappings        map[string]map[string]string `json:"model_mappings,omitempty"` // agent (claude/codex/gemini) → 客户端模型名 → Qoder model.key
 }
 
 type QuotaInfo struct {

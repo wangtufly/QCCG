@@ -2,11 +2,12 @@ import { useState } from 'react'
 import appLogo from './assets/qoder.png'
 import AccountsPage from './pages/AccountsPage'
 import SettingsPage from './pages/SettingsPage'
+import ClientConfigPage from './pages/ClientConfigPage'
 import LogsPage from './pages/LogsPage'
 import StatusIndicator from './components/StatusIndicator'
 import './App.css'
 
-type Page = 'accounts' | 'settings' | 'logs'
+type Page = 'accounts' | 'settings' | 'clients' | 'logs'
 
 export default function App() {
   const [page, setPage] = useState<Page>('accounts')
@@ -37,6 +38,14 @@ export default function App() {
           </svg>
           <span>设置</span>
         </button>
+        <button className={page === 'clients' ? 'active' : ''} onClick={() => setPage('clients')}>
+          <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+          <span>客户端</span>
+        </button>
         <button className={page === 'logs' ? 'active' : ''} onClick={() => setPage('logs')}>
           <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -51,6 +60,7 @@ export default function App() {
       <main className="content">
         {page === 'accounts' && <AccountsPage />}
         {page === 'settings' && <SettingsPage />}
+        {page === 'clients' && <ClientConfigPage />}
         {page === 'logs' && <LogsPage />}
       </main>
     </div>
