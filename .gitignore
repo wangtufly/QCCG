@@ -38,3 +38,9 @@ docs/
 
 # 工具目录
 cmd/
+/..bfg-report/2026-05-15/18-18-34/protected-dirt/139e660a-HEAD.csv
+/..bfg-report/2026-05-15/18-15-13/cache-stats.txt
+/..bfg-report/2026-05-15/18-18-34/cache-stats.txt
+/..bfg-report/2026-05-15/18-15-13/deleted-files.txt
+/..bfg-report/2026-05-15/18-15-13/object-id-map.old-new.txt
+/..bfg-report/2026-05-15/18-18-34/object-id-map.old-new.txt
