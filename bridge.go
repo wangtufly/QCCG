@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 
 	_ "embed"
 
+	"qoder2api/account"
 	"qoder2api/logger"
 )
 
@@ -115,6 +117,43 @@ func newBridge(pat string) (*bridge, error) {
 	}, nil
 }
 
+// QoderModel 是返回给前端的精简模型条目（仅保留下拉选择必要字段）
+type QoderModel struct {
+	Key         string `json:"key"`
+	DisplayName string `json:"display_name"`
+	Enable      bool   `json:"enable"`
+	IsDefault   bool   `json:"is_default"`
+}
+
+// listAvailableModels 通过 cosy 签名调用 /algo/api/v2/model/list 拉取上游模型清单。
+// 返回顶层 assistant 数组中 enable=true 的模型，按 is_default desc + display_name asc 排序。
+func (b *bridge) listAvailableModels() ([]QoderModel, error) {
+	const modelListURL = "https://api3.qoder.sh/algo/api/v2/model/list"
+	resp, err := b.client.callGet(modelListURL)
+	if err != nil {
+		return nil, err
+	}
+	rawList, _ := resp["assistant"].([]interface{})
+	out := make([]QoderModel, 0, len(rawList))
+	for _, it := range rawList {
+		m, ok := it.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		enable, _ := m["enable"].(bool)
+		if !enable {
+			continue
+		}
+		out = append(out, QoderModel{
+			Key:         strVal(m, "key"),
+			DisplayName: strVal(m, "display_name"),
+			Enable:      enable,
+			IsDefault:   func() bool { v, _ := m["is_default"].(bool); return v }(),
+		})
+	}
+	return out, nil
+}
+
 // deepCopyMap does a JSON round-trip deep copy
 func deepCopyMap(m map[string]interface{}) map[string]interface{} {
 	data, _ := json.Marshal(m)
@@ -124,6 +163,13 @@ func deepCopyMap(m map[string]interface{}) map[string]interface{} {
 }
 
 func (b *bridge) callQoder(ctx context.Context, messages []interface{}, model string, tools interface{}, onDelta func(bridgeDelta)) error {
+	// 将客户端模型名（claude-sonnet-4-6 等）映射成 Qoder 上游内部 model.key（auto/ultimate/performance/lite/efficient）。
+	// 上游对未知 key 会走兜底返回内容，但不会把这次调用计入 quota，这是「请求成功但 dashboard 无用量」的根因。
+	originalModel := model
+	model = mapModel(model)
+	if model != originalModel {
+		logger.Debug("mapModel %s -> %s", originalModel, model)
+	}
 	body := deepCopyMap(b.templateBase)
 
 	nid := newUUID()
@@ -233,4 +279,83 @@ func strValDefault(m map[string]interface{}, key, def string) string {
 		return v
 	}
 	return def
+}
+
+// defaultModelMapping 是当用户未在 Settings.ModelMapping 中配置时，bridge 的内置兜底映射。
+// 采用「家族关键字 → Qoder model.key」形式，依赖下面 mapModel 的双向 substring 模糊匹配，
+// 一条 "sonnet" 即可覆盖 claude-sonnet-4-6 / claude-sonnet-4-20250514 等所有变体。
+//
+// 设计原则：默认表只负责让请求落到合法 SKU 不出错，差异化由用户在 UI 自行覆盖。
+// Qoder 上游合法 key 仅 auto/ultimate/performance/lite/efficient（见 cmd/fetchmodels/models_result.json），
+// GPT / Gemini 没有专属 SKU，统一映射到主力档 performance —— 既不浪费 ultimate 高 price_factor，
+// 也不被 lite 限频；想分档（如 gpt-5→ultimate / gpt-5-mini→efficient）请在 UI 配置。
+var defaultModelMapping = map[string]string{
+	// Claude 三档
+	"opus":   "ultimate",
+	"sonnet": "performance",
+	"haiku":  "lite",
+	// 非 Claude 家族兜底
+	"gpt":    "performance",
+	"gemini": "performance",
+}
+
+// mapModel 解析顺序（参考 ccx 的 RedirectModel 算法）：
+//  1. 用户 Settings.ModelMapping 精确命中
+//  2. 用户 Settings.ModelMapping 双向 substring 模糊匹配（按 source 长度倒序，最长优先）
+//  3. defaultModelMapping 精确命中
+//  4. defaultModelMapping 双向 substring 模糊匹配
+//  5. ToLower 兜底（如客户端传 "Performance" 这种 display_name 大小写）
+//
+// 双向 substring 含义：source 包含 model（短关键字匹配长模型名，如 "sonnet" → "claude-sonnet-4-6"）
+// 或 model 包含 source（长别名匹配短模型名，反向也能命中）。
+func mapModel(model string) string {
+	if model == "" {
+		return model
+	}
+
+	// 用户配置优先
+	settings, err := account.LoadSettings()
+	if err == nil && settings != nil && len(settings.ModelMapping) > 0 {
+		if mapped := lookupMapping(model, settings.ModelMapping); mapped != "" {
+			return mapped
+		}
+	}
+
+	// 内置默认映射兜底
+	if mapped := lookupMapping(model, defaultModelMapping); mapped != "" {
+		return mapped
+	}
+
+	// 大小写归一化兜底（处理客户端直接传 "Performance" 这种）
+	return strings.ToLower(model)
+}
+
+// lookupMapping 在单张映射表内执行：精确匹配 → 长度倒序 + 双向 substring 模糊匹配。
+// 未命中返回空串。
+func lookupMapping(model string, table map[string]string) string {
+	if len(table) == 0 {
+		return ""
+	}
+	// 1. 精确命中
+	if v, ok := table[model]; ok && v != "" {
+		return v
+	}
+	// 2. 长度倒序，确保 "claude-sonnet-4-6" 优先于 "sonnet" 命中
+	type kv struct{ src, dst string }
+	pairs := make([]kv, 0, len(table))
+	for k, v := range table {
+		if k == "" || v == "" {
+			continue
+		}
+		pairs = append(pairs, kv{k, v})
+	}
+	sort.Slice(pairs, func(i, j int) bool { return len(pairs[i].src) > len(pairs[j].src) })
+	mLow := strings.ToLower(model)
+	for _, p := range pairs {
+		sLow := strings.ToLower(p.src)
+		if strings.Contains(mLow, sLow) || strings.Contains(sLow, mLow) {
+			return p.dst
+		}
+	}
+	return ""
 }

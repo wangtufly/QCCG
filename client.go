@@ -68,6 +68,39 @@ func pathSigFrom(rawURL string) (string, error) {
 	return p, nil
 }
 
+// callGet 用 cosy 签名发送 GET 请求，body 部分参与签名时为空字符串。
+// 用于 /algo/api/v2/model/list 之类的纯查询接口。
+func (c *bearerClient) callGet(fullURL string) (map[string]interface{}, error) {
+	pathSig, err := pathSigFrom(fullURL)
+	if err != nil {
+		return nil, err
+	}
+	headers, err := c.buildHeaders(pathSig, "", "application/json", nil)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest("GET", fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("HTTP %d body=%s", resp.StatusCode, string(data))
+	}
+	var result map[string]interface{}
+	err = json.Unmarshal(data, &result)
+	return result, err
+}
+
 func (c *bearerClient) callPost(fullURL string, jsonBody interface{}) (map[string]interface{}, error) {
 	pathSig, err := pathSigFrom(fullURL)
 	if err != nil {

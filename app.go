@@ -299,3 +299,15 @@ func (a *App) GetAccountQuota(accountID string) (*account.QuotaInfo, error) {
 	}
 	return account.FetchQuota(token)
 }
+
+// ListQoderModels 通过当前激活账号的 bridge 拉取 Qoder 上游可用模型列表，
+// 供「模型映射」配置的下拉选择使用。如果 bridge 未启动则返回错误。
+func (a *App) ListQoderModels() ([]QoderModel, error) {
+	a.bridgeMu.Lock()
+	b := a.bridge
+	a.bridgeMu.Unlock()
+	if b == nil {
+		return nil, fmt.Errorf("bridge 未启动，请先激活账号")
+	}
+	return b.listAvailableModels()
+}

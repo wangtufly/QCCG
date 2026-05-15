@@ -46,6 +46,10 @@ export function ListAccounts() {
   return window['go']['main']['App']['ListAccounts']();
 }
 
+export function ListQoderModels() {
+  return window['go']['main']['App']['ListQoderModels']();
+}
+
 export function QuitApp() {
   return window['go']['main']['App']['QuitApp']();
 }

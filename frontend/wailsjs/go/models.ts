@@ -127,6 +127,7 @@ export namespace account {
 	    auto_start: boolean;
 	    log_level: string;
 	    quota_refresh_interval: number;
+	    model_mapping?: Record<string, string>;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -138,6 +139,7 @@ export namespace account {
 	        this.auto_start = source["auto_start"];
 	        this.log_level = source["log_level"];
 	        this.quota_refresh_interval = source["quota_refresh_interval"];
+	        this.model_mapping = source["model_mapping"];
 	    }
 	}
 	export class Status {
@@ -197,6 +199,29 @@ export namespace logger {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace main {
+	
+	export class QoderModel {
+	    key: string;
+	    display_name: string;
+	    enable: boolean;
+	    is_default: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new QoderModel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.display_name = source["display_name"];
+	        this.enable = source["enable"];
+	        this.is_default = source["is_default"];
+	    }
 	}
 
 }

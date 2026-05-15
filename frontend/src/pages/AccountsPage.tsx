@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { DndContext, closestCenter, DragEndEvent } from '@dnd-kit/core'
+import { DndContext, closestCenter, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import AccountCard from '../components/AccountCard'
 import AddAccountModal from '../components/AddAccountModal'
@@ -46,6 +46,9 @@ export default function AccountsPage() {
 
   const refresh = () => listAccounts().then(setAccounts)
 
+  // 拖拽至少移动 8px 才激活，避免吞掉卡片内按钮的 click 事件
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+
   useEffect(() => {
     refresh()
     ;(window as any).go?.main?.App?.GetSettings()
@@ -84,7 +87,7 @@ export default function AccountsPage() {
           <p>暂无账号，点击右上角添加</p>
         </div>
       ) : (
-        <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={accounts.map(a => a.id)} strategy={verticalListSortingStrategy}>
             <div className="accounts-grid">
               {accounts.map(a => (
