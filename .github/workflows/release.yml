@@ -24,6 +24,10 @@ jobs:
       - name: Check if this tag is the latest
         id: check
         run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "is_latest=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
           LATEST=$(git tag --sort=version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | tail -1)
           echo "Latest tag: $LATEST, Current tag: ${{ github.ref_name }}"
           if [ "$LATEST" = "${{ github.ref_name }}" ]; then
