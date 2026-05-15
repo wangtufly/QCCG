@@ -7,8 +7,6 @@ qoder2api
 # Wails 构建目录
 build/bin/
 
-# Go
-go.sum
 
 # 前端
 frontend/dist/
