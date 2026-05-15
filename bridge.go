@@ -254,7 +254,8 @@ func (b *bridge) callQoder(ctx context.Context, agent string, messages []interfa
 	logger.Info("callQoder model=%s prompt=%s", model, preview)
 	logger.Debug("callQoder request body: %s", func() string { d, _ := json.Marshal(body); return string(d) }())
 
-	return b.client.openStreamLines(ctx, qurl, body, extra, func(line string) {
+	var upstreamErr error
+	streamErr := b.client.openStreamLines(ctx, qurl, body, extra, func(line string) {
 		if !strings.HasPrefix(line, "data:") {
 			return
 		}
@@ -263,10 +264,18 @@ func (b *bridge) callQoder(ctx context.Context, agent string, messages []interfa
 			return
 		}
 		delta := extractDelta(dataPayload)
+		if delta.Err != nil {
+			upstreamErr = delta.Err
+			return
+		}
 		if !delta.isEmpty() {
 			onDelta(delta)
 		}
 	})
+	if upstreamErr != nil {
+		return upstreamErr
+	}
+	return streamErr
 }
 
 // redactRequestBodyJSON 接收原始请求 JSON 字节，深拷贝后把可能含敏感对话内容的字段

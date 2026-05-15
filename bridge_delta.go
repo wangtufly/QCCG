@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"qoder2api/logger"
 )
@@ -12,10 +13,11 @@ type bridgeDelta struct {
 	ToolCalls    []interface{}
 	InputTokens  int
 	OutputTokens int
+	Err          error // 上游返回业务错误时非 nil
 }
 
 func (d bridgeDelta) isEmpty() bool {
-	return d.Role == "" && d.Content == "" && d.ToolCalls == nil && d.InputTokens == 0 && d.OutputTokens == 0
+	return d.Role == "" && d.Content == "" && d.ToolCalls == nil && d.InputTokens == 0 && d.OutputTokens == 0 && d.Err == nil
 }
 
 func extractDelta(dataLine string) bridgeDelta {
@@ -58,6 +60,13 @@ func extractDelta(dataLine string) bridgeDelta {
 		if in > 0 || out > 0 {
 			return bridgeDelta{InputTokens: in, OutputTokens: out}
 		}
+	}
+	// 上游业务错误：{"code":"115","message":"..."}
+	if code, ok := innerJSON["code"].(string); ok && code != "" && code != "0" {
+		msg, _ := innerJSON["message"].(string)
+		err := fmt.Errorf("upstream error code=%s: %s", code, msg)
+		logger.Error("[delta] %v", err)
+		return bridgeDelta{Err: err}
 	}
 	logger.Debug("[delta] no valid choices found, inner=%s", inner)
 	return bridgeDelta{}

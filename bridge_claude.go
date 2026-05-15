@@ -110,6 +110,10 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 		var totalInputTokens, totalOutputTokens int
 
 		err = b.callQoder(ctx, "claude", messages, model, tools, func(d bridgeDelta) {
+			if d.Err != nil {
+				// 上游业务错误，记录后让 callQoder 返回的 err 处理
+				return
+			}
 			if d.InputTokens > 0 || d.OutputTokens > 0 {
 				totalInputTokens = d.InputTokens
 				totalOutputTokens = d.OutputTokens
@@ -183,6 +187,9 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 		var toolCallBuf []interface{}
 		var totalInputTokens, totalOutputTokens int
 		err = b.callQoder(ctx, "claude", messages, model, tools, func(d bridgeDelta) {
+			if d.Err != nil {
+				return
+			}
 			if d.InputTokens > 0 || d.OutputTokens > 0 {
 				totalInputTokens = d.InputTokens
 				totalOutputTokens = d.OutputTokens
