@@ -1,6 +1,6 @@
 # Qoder2API
 
-[![GitHub release](https://img.shields.io/github/v/release/wangtufly/qoder2API?include_prereleases)](../../releases)
+[![GitHub tag](https://img.shields.io/github/v/tag/wangtufly/qoder2API?include_prereleases)](https://github.com/wangtufly/qoder2API/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **鸣谢：**
