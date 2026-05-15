@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., v1.0.0)'
+        required: true
+        type: string
 
 jobs:
   build-macos:
@@ -11,6 +17,7 @@ jobs:
     strategy:
       matrix:
         arch: [amd64, arm64]
+      fail-fast: false
     
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +27,7 @@ jobs:
         with:
           go-version: '1.23'
           cache: true
+          check-latest: true
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -31,12 +39,26 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
       
+      - name: Verify Wails installation
+        run: wails version
+      
       - name: Install frontend dependencies
         run: cd frontend && npm ci
       
       - name: Build macOS app
         run: |
-          wails build -platform darwin/${{ matrix.arch }} -o qoder2api
+          wails build \
+            -platform darwin/${{ matrix.arch }} \
+            -ldflags "-X main.Version=${{ github.ref_name }}" \
+            -o qoder2api
+        env:
+          CGO_ENABLED: 1
+      
+      - name: Verify build output
+        run: |
+          ls -lh build/bin/
+          file build/bin/qoder2api || true
+          file build/bin/qoder2api.app/Contents/MacOS/qoder2api || true
       
       - name: Create DMG
         run: |
@@ -50,16 +72,27 @@ jobs:
             --hide-extension "qoder2api.app" \
             --app-drop-link 600 185 \
             "Qoder2API-${{ github.ref_name }}-darwin-${{ matrix.arch }}.dmg" \
-            "build/bin/qoder2api.app" || echo "DMG creation failed, continuing with app bundle"
+            "build/bin/qoder2api.app" || {
+              echo "DMG creation failed, uploading app bundle only"
+              exit 0
+            }
       
-      - name: Upload artifact
+      - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qoder2api-${{ github.ref_name }}-darwin-${{ matrix.arch }}
+          name: qoder2api-${{ github.ref_name }}-darwin-${{ matrix.arch }}-bin
           path: |
             build/bin/qoder2api
-            build/bin/qoder2api.app
-            Qoder2API-*.dmg
+            build/bin/qoder2api.app/
+          retention-days: 30
+      
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        if: hashFiles('Qoder2API-*.dmg') != ''
+        with:
+          name: qoder2api-${{ github.ref_name }}-darwin-${{ matrix.arch }}-dmg
+          path: Qoder2API-*.dmg
+          retention-days: 30
 
   build-linux:
     runs-on: ubuntu-latest
@@ -71,6 +104,7 @@ jobs:
         with:
           go-version: '1.23'
           cache: true
+          check-latest: true
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -82,6 +116,9 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
       
+      - name: Verify Wails installation
+        run: wails version
+      
       - name: Install frontend dependencies
         run: cd frontend && npm ci
       
@@ -91,18 +128,32 @@ jobs:
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
       
       - name: Build Linux app
-        run: wails build -platform linux/amd64 -o qoder2api
+        run: |
+          wails build \
+            -platform linux/amd64 \
+            -ldflags "-X main.Version=${{ github.ref_name }}" \
+            -o qoder2api
+        env:
+          CGO_ENABLED: 1
+      
+      - name: Verify build output
+        run: |
+          ls -lh build/bin/
+          file build/bin/qoder2api
       
       - name: Create tarball
         run: |
           cd build/bin
           tar -czf ../../qoder2api-${{ github.ref_name }}-linux-amd64.tar.gz qoder2api
+          cd ../..
+          ls -lh qoder2api-*.tar.gz
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: qoder2api-${{ github.ref_name }}-linux-amd64
           path: qoder2api-*.tar.gz
+          retention-days: 30
 
   release:
     needs: [build-macos, build-linux]
@@ -118,15 +169,49 @@ jobs:
         with:
           path: artifacts
       
+      - name: List downloaded artifacts
+        run: |
+          echo "=== Downloaded Artifacts ==="
+          find artifacts -type f | sort
+          echo "=========================="
+      
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: Release ${{ github.ref_name }}
           draft: true
           prerelease: false
+          body: |
+            ## Qoder2API ${{ github.ref_name }}
+            
+            ### Features
+            - Multi-account management with PAT and OAuth authentication
+            - Bridge service for OpenAI, Claude, Codex, and Gemini APIs
+            - macOS desktop app built with Wails framework
+            - Model mapping and configuration management
+            - Real-time account switching and bridge control
+            - System tray integration
+            
+            ### Downloads
+            - **macOS (Intel)**: Qoder2API-${{ github.ref_name }}-darwin-amd64.dmg
+            - **macOS (Apple Silicon)**: Qoder2API-${{ github.ref_name }}-darwin-arm64.dmg
+            - **Linux (x64)**: qoder2api-${{ github.ref_name }}-linux-amd64.tar.gz
+            
+            ### Installation
+            **macOS:**
+            1. Download the `.dmg` file for your architecture
+            2. Open the DMG and drag Qoder2API to Applications
+            3. First-time users: Right-click → Open (to bypass Gatekeeper)
+            
+            **Linux:**
+            ```bash
+            tar -xzf qoder2api-${{ github.ref_name }}-linux-amd64.tar.gz
+            ./qoder2api
+            ```
           files: |
             artifacts/**/*.dmg
             artifacts/**/*.tar.gz
             artifacts/**/qoder2api
-            artifacts/**/qoder2api.app
+            artifacts/**/qoder2api.app/**
           generate_release_notes: true
+          fail_on_unmatched_files: false
