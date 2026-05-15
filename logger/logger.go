@@ -187,12 +187,6 @@ func SetLevel(level string) {
 	currentLevel = Level(level)
 }
 
-func GetLevel() string {
-	mu.RLock()
-	defer mu.RUnlock()
-	return string(currentLevel)
-}
-
 func shouldLog(level Level) bool {
 	mu.RLock()
 	defer mu.RUnlock()
@@ -274,13 +268,6 @@ func GetLogsSince(afterSeq, limit int) LogPage {
 		last = entries[len(entries)-1].Seq
 	}
 	return LogPage{Entries: result, LastSeq: last}
-}
-
-// LogDir 返回当前生效的日志目录（前端「打开日志文件夹」用）。空字符串表示文件 sink 未启用。
-func LogDir() string {
-	fileMu.Lock()
-	defer fileMu.Unlock()
-	return fileDir
 }
 
 func Clear() {
