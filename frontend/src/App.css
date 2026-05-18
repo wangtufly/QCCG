@@ -1374,11 +1374,28 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 15px;
+  margin-bottom: 10px;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
   flex-wrap: nowrap;
+}
+.mapping-hint-error {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.08);
+  color: #92400e;
+  font-size: 12px;
+  line-height: 1.5;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 .mapping-section-header .section-title {
   flex-shrink: 0;

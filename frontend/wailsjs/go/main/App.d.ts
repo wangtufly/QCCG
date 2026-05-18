@@ -12,6 +12,8 @@ export function BackupClientConfigFile(arg1:string):Promise<void>;
 
 export function CancelOAuthLogin(arg1:string):Promise<void>;
 
+export function CleanupAllData():Promise<void>;
+
 export function ClearLogs():Promise<void>;
 
 export function Confirm(arg1:string,arg2:string):Promise<boolean>;

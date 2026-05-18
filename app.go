@@ -332,7 +332,40 @@ func (a *App) ListQoderModels() ([]QoderModel, error) {
 	b := a.bridge
 	a.bridgeMu.Unlock()
 	if b == nil {
-		return nil, fmt.Errorf("bridge 未启动，请先激活账号")
+		return nil, fmt.Errorf("BRIDGE_NOT_RUNNING: bridge 未启动，请先激活账号并启动 bridge")
 	}
 	return b.listAvailableModels()
+}
+
+// CleanupAllData 清理 qoder2api 产生的本地数据与注入配置。
+func (a *App) CleanupAllData() error {
+	if err := a.StopBridge(); err != nil {
+		logger.Error("CleanupAllData stop bridge failed: %v", err)
+	}
+
+	for _, clientType := range []string{"claude", "codex", "gemini"} {
+		if err := a.RemoveClientConfig(clientType); err != nil {
+			logger.Error("CleanupAllData remove client config failed (%s): %v", clientType, err)
+		}
+	}
+
+	accounts, err := account.List()
+	if err == nil {
+		for _, acct := range accounts {
+			if err := account.DeleteSecret(acct.ID); err != nil {
+				logger.Error("CleanupAllData delete secret failed (%s): %v", acct.ID, err)
+			}
+		}
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("home dir: %w", err)
+	}
+	dataDir := filepath.Join(home, ".qoder2api")
+	if err := os.RemoveAll(dataDir); err != nil {
+		return fmt.Errorf("remove %s: %w", dataDir, err)
+	}
+	logger.Info("CleanupAllData completed: removed %s", dataDir)
+	return nil
 }

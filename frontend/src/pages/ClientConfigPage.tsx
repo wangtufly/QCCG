@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { Wand2 as WandIcon, History, FolderSync, Rocket, Save, AlertTriangle } from 'lucide-react'
+import { Wand2 as WandIcon, History, FolderSync, Rocket, Save, AlertTriangle, RefreshCw } from 'lucide-react'
 import ConfigEditor, { ConfigEditorHandle } from '../components/ConfigEditor'
 import {
   GetClientConfigs,
@@ -290,17 +290,39 @@ export default function ClientConfigPage() {
 
   const [pendingMapping, setPendingMapping] = useState<Record<string, Record<string, string>> | null>(null)
   const [mappingDirty, setMappingDirty] = useState(false)
+  const [modelsLoading, setModelsLoading] = useState(false)
+  const [modelsError, setModelsError] = useState<string | null>(null)
 
-  // 初始加载：并行拉取所有数据，ListQoderModels 只调用一次
+  const refreshQoderModels = useCallback(async () => {
+    setModelsLoading(true)
+    setModelsError(null)
+    try {
+      const models = await ListQoderModels()
+      setQoderModels(models || [])
+      return models || []
+    } catch (err: any) {
+      const msg = String(err?.message || err)
+      if (msg.includes('BRIDGE_NOT_RUNNING')) {
+        setModelsError('Bridge 未启动，当前显示的是兜底模型列表。请先激活账号并启动 Bridge 后刷新。')
+      } else {
+        setModelsError(`拉取模型列表失败：${msg}`)
+      }
+      setQoderModels([])
+      return [] as main.QoderModel[]
+    } finally {
+      setModelsLoading(false)
+    }
+  }, [])
+
+  // 初始加载：并行拉取所有数据
   useEffect(() => {
     Promise.all([
       GetClientConfigs(),
-      ListQoderModels().catch(() => [] as main.QoderModel[]),
+      refreshQoderModels(),
       GetStatus().catch(() => ({ running: false, port: 8963 })),
       GetSettings().catch(() => null),
-    ]).then(([c, m, s, settings]) => {
+    ]).then(([c, _m, s, settings]) => {
       setConfigs(c || [])
-      setQoderModels(m || [])
       if (s) setStatus(s as any)
       if (settings) {
         const mappings = (settings.model_mappings || {}) as Record<string, Record<string, string>>
@@ -310,7 +332,7 @@ export default function ClientConfigPage() {
     }).catch(err => {
       console.error('Failed to load configs:', err)
     }).finally(() => setLoading(false))
-  }, [])
+  }, [refreshQoderModels])
 
   const loadFile = useCallback(async (type: string) => {
     setFileLoading(true)
@@ -341,6 +363,12 @@ export default function ClientConfigPage() {
     const bucket = savedMappings[activeType]
     setFileContent(prev => patchMappingPreview(prev, fileMeta.format, bucket || {}, activeType))
   }, [fileMeta?.path, activeType])
+
+  // bridge 从未运行->运行时，自动刷新一次模型列表
+  useEffect(() => {
+    if (!status?.running) return
+    refreshQoderModels()
+  }, [status?.running, refreshQoderModels])
 
   const activeCfg = useMemo(
     () => configs.find(c => c.type === activeType),
@@ -499,6 +527,9 @@ export default function ClientConfigPage() {
               agent={activeCfg.type}
               qoderModels={qoderModels}
               initialMappings={savedMappings}
+              modelsLoading={modelsLoading}
+              modelsError={modelsError}
+              onRefreshModels={refreshQoderModels}
               onMappingChange={(allMappings) => { setPendingMapping(allMappings); setMappingDirty(true) }}
               onMappingClean={() => setMappingDirty(false)}
               onPatchPreview={handleMappingPatchPreview}
@@ -580,12 +611,15 @@ interface MappingProps {
   agent: string
   qoderModels: main.QoderModel[]
   initialMappings: Record<string, Record<string, string>>
+  modelsLoading: boolean
+  modelsError: string | null
+  onRefreshModels: () => Promise<main.QoderModel[]>
   onMappingChange: (allMappings: Record<string, Record<string, string>>) => void
   onMappingClean: () => void
   onPatchPreview: (agentBucket: Record<string, string>) => void
 }
 
-function ModelMappingSection({ agent, qoderModels, initialMappings, onMappingChange, onMappingClean, onPatchPreview }: MappingProps) {
+function ModelMappingSection({ agent, qoderModels, initialMappings, modelsLoading, modelsError, onRefreshModels, onMappingChange, onMappingClean, onPatchPreview }: MappingProps) {
   const [rows, setRows] = useState<Row[]>([])
   const [touched, setTouched] = useState(false)
 
@@ -642,7 +676,11 @@ function ModelMappingSection({ agent, qoderModels, initialMappings, onMappingCha
         <span className="divider-spacer" />
         <button className="btn btn-secondary btn-sm" onClick={fillDefaults} title="按家族关键字一键填充默认条目">默认</button>
         <button className="btn btn-secondary btn-sm" onClick={addRow}>+ 加一行</button>
+        <button className="icon-btn icon-btn-reload" onClick={onRefreshModels} disabled={modelsLoading} title="刷新上游模型列表">
+          <RefreshCw size={16} className={modelsLoading ? 'spin' : ''} />
+        </button>
       </div>
+      {modelsError && <div className="mapping-hint-error">{modelsError}</div>}
 
       {rows.length === 0 ? (
         <div className="mapping-empty">未配置自定义映射，将使用内置默认表（{(DEFAULT_MAPPING_BY_AGENT[agent] || []).map(([f, t]) => `${f}→${t}`).join(' / ') || '无'}）</div>

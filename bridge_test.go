@@ -188,10 +188,9 @@ func TestMapModel_DefaultMappingFallback(t *testing.T) {
 }
 
 func TestMapModel_ToLowerFallback(t *testing.T) {
-	// 完全没命中时归一化大小写，避免 "ZZZNotARealModel" 这种直传上游 500。
-	// 用一个绝不会出现在 defaultModelMapping / 用户配置中的字符串，保证测试稳定。
-	if got := mapModel("", "ZZZNotARealModel"); got != "zzznotarealmodel" {
-		t.Fatalf("expected ToLower fallback, got '%s'", got)
+	// 完全没命中时兜底到合法 key，避免将未知模型名直传上游导致计费/行为异常。
+	if got := mapModel("", "ZZZNotARealModel"); got != "performance" {
+		t.Fatalf("expected performance fallback, got '%s'", got)
 	}
 }
 

@@ -18,6 +18,10 @@ export function CancelOAuthLogin(arg1) {
   return window['go']['main']['App']['CancelOAuthLogin'](arg1);
 }
 
+export function CleanupAllData() {
+  return window['go']['main']['App']['CleanupAllData']();
+}
+
 export function ClearLogs() {
   return window['go']['main']['App']['ClearLogs']();
 }

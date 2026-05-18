@@ -405,7 +405,10 @@ func mapModel(agent, model string) string {
 	if settings != nil && agent != "" {
 		if table, ok := settings.ModelMappings[agent]; ok && len(table) > 0 {
 			if mapped := lookupMapping(model, table); mapped != "" {
-				return mapped
+				if isValidQoderModelKey(mapped) {
+					return mapped
+				}
+				logger.Error("invalid mapped model key in settings.model_mappings[%s]: %s -> %s, fallback to default mapping", agent, model, mapped)
 			}
 		}
 	}
@@ -413,7 +416,10 @@ func mapModel(agent, model string) string {
 	// 2. 兼容旧的扁平 ModelMapping（仅当未配置 agent 桶时生效）
 	if settings != nil && len(settings.ModelMapping) > 0 {
 		if mapped := lookupMapping(model, settings.ModelMapping); mapped != "" {
-			return mapped
+			if isValidQoderModelKey(mapped) {
+				return mapped
+			}
+			logger.Error("invalid mapped model key in deprecated settings.model_mapping: %s -> %s, fallback to default mapping", model, mapped)
 		}
 	}
 
@@ -423,7 +429,20 @@ func mapModel(agent, model string) string {
 	}
 
 	// 4. 大小写归一化兜底（处理客户端直接传 "Performance" 这种）
-	return strings.ToLower(model)
+	low := strings.ToLower(model)
+	if isValidQoderModelKey(low) {
+		return low
+	}
+	return "performance"
+}
+
+func isValidQoderModelKey(k string) bool {
+	switch strings.ToLower(strings.TrimSpace(k)) {
+	case "auto", "ultimate", "performance", "efficient", "lite":
+		return true
+	default:
+		return false
+	}
 }
 
 // lookupMapping 在单张映射表内执行：精确匹配 → 长度倒序 + 双向 substring 模糊匹配。

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { RefreshCw } from 'lucide-react'
-import { GetSettings, SaveSettings } from '../../wailsjs/go/main/App'
+import { GetSettings, SaveSettings, CleanupAllData, Confirm } from '../../wailsjs/go/main/App'
 import { account } from '../../wailsjs/go/models'
 
 function generateToken(): string {
@@ -19,6 +19,8 @@ export default function SettingsPage() {
     log_level: 'info'
   }))
   const [saved, setSaved] = useState(false)
+  const [cleanupBusy, setCleanupBusy] = useState(false)
+  const [cleanupMessage, setCleanupMessage] = useState<string | null>(null)
 
   useEffect(() => {
     GetSettings().then(s => {
@@ -38,7 +40,23 @@ export default function SettingsPage() {
     }
   }
 
-  const baseURL = `http://127.0.0.1:${settings.port}`
+  const handleCleanupAll = async () => {
+    const ok = await Confirm('危险操作确认', '将清理 qoder2api 本地数据（~/.qoder2api）、客户端注入配置和 Keychain 密钥，是否继续？')
+    if (!ok) return
+    try {
+      setCleanupBusy(true)
+      setCleanupMessage(null)
+      await CleanupAllData()
+      setCleanupMessage('清理完成，建议重启应用。')
+      const s = await GetSettings().catch(() => null)
+      if (s) setSettings(s)
+    } catch (err: any) {
+      setCleanupMessage(`清理失败：${String(err?.message || err)}`)
+    } finally {
+      setCleanupBusy(false)
+    }
+  }
+
   const effectiveToken = settings.bridge_token || 'qoder2api'
 
   return (
@@ -197,6 +215,23 @@ export default function SettingsPage() {
               <span className="storage-label">配置备份</span>
               <code className="storage-path">~/.qoder2api/backups/</code>
             </div>
+            <div className="storage-item">
+              <span className="storage-label">数据清理</span>
+              <button
+                className="btn btn-danger"
+                onClick={handleCleanupAll}
+                disabled={cleanupBusy}
+                title="清理 qoder2api 本地数据、注入配置与密钥"
+              >
+                {cleanupBusy ? '清理中…' : '清理本地数据'}
+              </button>
+            </div>
+            {cleanupMessage && (
+              <div className="setting-note" style={{ marginTop: 10 }}>
+                <span className="note-icon">⚠️</span>
+                <span>{cleanupMessage}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
