@@ -68,7 +68,7 @@ export default function AddAccountModal({ onClose }: Props) {
                 <span className="add-option-desc">在 Qoder 设置页获取 Personal Access Token 粘贴导入</span>
               </div>
             </button>
-            <button className="add-option-card primary" onClick={handleOAuth} disabled={loading}>
+            <button className="add-option-card primary" onClick={handleOAuth} disabled={loading} style={{ display: 'none' }} aria-hidden="true" tabIndex={-1}>
               <div className="add-option-icon">🌐</div>
               <div className="add-option-info">
                 <span className="add-option-title">{loading ? '启动中...' : 'OAuth 登录'}</span>

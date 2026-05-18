@@ -209,7 +209,7 @@ func buildAccountFromToken(deviceToken string) (*Account, error) {
 		UserType:  strGet(info, "userType"),
 		Plan:      plan,
 		AuthMode:  "oauth",
-		APIMode:   "openai", // 默认使用 OpenAI 格式
+		APIMode:   "openai",
 		Tags:      []string{},
 		CreatedAt: now,
 	}

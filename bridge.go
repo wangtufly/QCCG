@@ -54,11 +54,7 @@ func newBridge(pat string) (*bridge, error) {
 	var identity authIdentity
 	var name, id string
 
-	// 判断 token 类型：dt- 开头是 device token，直接使用
 	if strings.HasPrefix(pat, "dt-") {
-		// OAuth device token：直接使用，不调用 exchangeJobToken
-		logger.Info("Bridge using OAuth device token directly")
-		// 使用 device token 获取用户信息
 		userInfo, err := fetchUserInfoWithToken(pat)
 		if err != nil {
 			return nil, fmt.Errorf("fetch user info: %w", err)
@@ -70,11 +66,10 @@ func newBridge(pat string) (*bridge, error) {
 			Aid:                id,
 			Uid:                id,
 			UserType:           strValDefault(userInfo, "userType", "personal_standard"),
-			SecurityOauthToken: pat, // device token
+			SecurityOauthToken: pat,
 			RefreshToken:       "",
 		}
 	} else {
-		// PAT：调用 exchangeJobToken
 		jt, err := exchangeJobToken(pat, mid, mtoken, mtype)
 		if err != nil {
 			return nil, fmt.Errorf("exchangeJobToken: %w", err)
@@ -134,6 +129,14 @@ func (b *bridge) listAvailableModels() ([]QoderModel, error) {
 	if err != nil {
 		return nil, err
 	}
+	models := parseQoderModels(resp)
+	if len(models) == 0 {
+		return nil, fmt.Errorf("%s -> empty model list", modelListURL)
+	}
+	return models, nil
+}
+
+func parseQoderModels(resp map[string]interface{}) []QoderModel {
 	rawList, _ := resp["assistant"].([]interface{})
 	out := make([]QoderModel, 0, len(rawList))
 	for _, it := range rawList {
@@ -153,7 +156,7 @@ func (b *bridge) listAvailableModels() ([]QoderModel, error) {
 			MaxInputTokens: int(floatVal(m, "max_input_tokens")),
 		})
 	}
-	return out, nil
+	return out
 }
 
 // deepCopyMap does a JSON round-trip deep copy
