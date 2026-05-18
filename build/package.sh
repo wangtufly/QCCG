@@ -5,8 +5,8 @@
 set -euo pipefail
 
 # ---------- 配置 ----------
-APP_NAME="qoder2api"
-PRODUCT_NAME="Qoder2API"
+APP_NAME="qccg"
+PRODUCT_NAME="QCCG"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="${PROJECT_ROOT}/build/bin"
 APP_BUNDLE="${BIN_DIR}/${APP_NAME}.app"

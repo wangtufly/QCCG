@@ -10,7 +10,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 
-	"qoder2api/logger"
+	"qccg/logger"
 )
 
 //go:embed all:frontend/dist
@@ -20,7 +20,7 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:     "Qoder2API",
+		Title:     "QCCG",
 		Width:     900,
 		Height:    650,
 		MinWidth:  720,

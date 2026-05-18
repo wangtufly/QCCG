@@ -80,29 +80,29 @@ jobs:
           wails build \
             -platform darwin/${{ matrix.arch }} \
             -ldflags "-X main.Version=${{ env.VERSION }}" \
-            -o qoder2api
+            -o qccg
         env:
           CGO_ENABLED: 1
       
       - name: Verify build output
         run: |
           ls -lh build/bin/
-          file build/bin/qoder2api || true
-          file build/bin/qoder2api.app/Contents/MacOS/qoder2api || true
+          file build/bin/qccg || true
+          file build/bin/qccg.app/Contents/MacOS/qccg || true
       
       - name: Create DMG
         run: |
           brew install create-dmg
           create-dmg \
-            --volname "Qoder2API" \
+            --volname "QCCG" \
             --window-pos 200 120 \
             --window-size 800 400 \
             --icon-size 100 \
-            --icon "qoder2api.app" 200 190 \
-            --hide-extension "qoder2api.app" \
+            --icon "qccg.app" 200 190 \
+            --hide-extension "qccg.app" \
             --app-drop-link 600 185 \
-            "Qoder2API-${{ env.VERSION }}-darwin-${{ matrix.arch }}.dmg" \
-            "build/bin/qoder2api.app" || {
+            "QCCG-${{ env.VERSION }}-darwin-${{ matrix.arch }}.dmg" \
+            "build/bin/qccg.app" || {
               echo "DMG creation failed, uploading app bundle only"
               exit 0
             }
@@ -110,18 +110,18 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qoder2api-${{ env.VERSION }}-darwin-${{ matrix.arch }}-bin
+          name: qccg-${{ env.VERSION }}-darwin-${{ matrix.arch }}-bin
           path: |
-            build/bin/qoder2api
-            build/bin/qoder2api.app/
+            build/bin/qccg
+            build/bin/qccg.app/
           retention-days: 30
       
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
-        if: hashFiles('Qoder2API-*.dmg') != ''
+        if: hashFiles('QCCG-*.dmg') != ''
         with:
-          name: qoder2api-${{ env.VERSION }}-darwin-${{ matrix.arch }}-dmg
-          path: Qoder2API-*.dmg
+          name: qccg-${{ env.VERSION }}-darwin-${{ matrix.arch }}-dmg
+          path: QCCG-*.dmg
           retention-days: 30
 
   build-linux:
@@ -164,27 +164,27 @@ jobs:
           wails build \
             -platform linux/amd64 \
             -ldflags "-X main.Version=${{ env.VERSION }}" \
-            -o qoder2api
+            -o qccg
         env:
           CGO_ENABLED: 1
       
       - name: Verify build output
         run: |
           ls -lh build/bin/
-          file build/bin/qoder2api
+          file build/bin/qccg
       
       - name: Create tarball
         run: |
           cd build/bin
-          tar -czf ../../qoder2api-${{ env.VERSION }}-linux-amd64.tar.gz qoder2api
+          tar -czf ../../qccg-${{ env.VERSION }}-linux-amd64.tar.gz qccg
           cd ../..
-          ls -lh qoder2api-*.tar.gz
+          ls -lh qccg-*.tar.gz
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qoder2api-${{ env.VERSION }}-linux-amd64
-          path: qoder2api-*.tar.gz
+          name: qccg-${{ env.VERSION }}-linux-amd64
+          path: qccg-*.tar.gz
           retention-days: 30
 
   release:
@@ -216,7 +216,7 @@ jobs:
           draft: true
           prerelease: false
           body: |
-            ## Qoder2API ${{ env.VERSION }}
+            ## QCCG ${{ env.VERSION }}
             
             ### Features
             - Multi-account management with PAT and OAuth authentication
@@ -227,25 +227,25 @@ jobs:
             - System tray integration
             
             ### Downloads
-            - **macOS (Intel)**: Qoder2API-${{ env.VERSION }}-darwin-amd64.dmg
-            - **macOS (Apple Silicon)**: Qoder2API-${{ env.VERSION }}-darwin-arm64.dmg
-            - **Linux (x64)**: qoder2api-${{ env.VERSION }}-linux-amd64.tar.gz
+            - **macOS (Intel)**: QCCG-${{ env.VERSION }}-darwin-amd64.dmg
+            - **macOS (Apple Silicon)**: QCCG-${{ env.VERSION }}-darwin-arm64.dmg
+            - **Linux (x64)**: qccg-${{ env.VERSION }}-linux-amd64.tar.gz
             
             ### Installation
             **macOS:**
             1. Download the `.dmg` file for your architecture
-            2. Open the DMG and drag Qoder2API to Applications
+            2. Open the DMG and drag QCCG to Applications
             3. First-time users: Right-click → Open (to bypass Gatekeeper)
             
             **Linux:**
             ```bash
-            tar -xzf qoder2api-${{ env.VERSION }}-linux-amd64.tar.gz
-            ./qoder2api
+            tar -xzf qccg-${{ env.VERSION }}-linux-amd64.tar.gz
+            ./qccg
             ```
           files: |
             artifacts/**/*.dmg
             artifacts/**/*.tar.gz
-            artifacts/**/qoder2api
-            artifacts/**/qoder2api.app/**
+            artifacts/**/qccg
+            artifacts/**/qccg.app/**
           generate_release_notes: true
           fail_on_unmatched_files: false

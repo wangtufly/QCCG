@@ -47,7 +47,7 @@ var (
 )
 
 // InitFile 启动文件 sink。
-// dir 是日志目录（推荐 ~/.qoder2api/logs），不存在会自动创建。
+// dir 是日志目录（推荐 ~/.qccg/logs），不存在会自动创建。
 // 启动时会做两件事：
 //  1. 把昨天及更早的明文 .log 压成 .log.gz（跨日归档）
 //  2. 删除超过 retainDays 的归档文件
@@ -112,7 +112,7 @@ func ensureFile() (*os.File, error) {
 			cleanupOldArchives(dir, retainDays)
 		}(fileDir)
 	}
-	path := filepath.Join(fileDir, "qoder2api-"+today+".log")
+	path := filepath.Join(fileDir, "qccg-"+today+".log")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return nil, err
@@ -122,17 +122,17 @@ func ensureFile() (*os.File, error) {
 	return f, nil
 }
 
-// archiveOldPlainLogs 把目录里所有非今天的 qoder2api-YYYYMMDD.log 压成 .log.gz 后删除原文件。
+// archiveOldPlainLogs 把目录里所有非今天的 qccg-YYYYMMDD.log 压成 .log.gz 后删除原文件。
 func archiveOldPlainLogs(dir string) {
 	today := time.Now().Format("20060102")
-	matches, _ := filepath.Glob(filepath.Join(dir, "qoder2api-*.log"))
+	matches, _ := filepath.Glob(filepath.Join(dir, "qccg-*.log"))
 	for _, p := range matches {
 		base := filepath.Base(p)
-		// qoder2api-YYYYMMDD.log → 取出 YYYYMMDD
-		if len(base) < len("qoder2api-YYYYMMDD.log") {
+		// qccg-YYYYMMDD.log → 取出 YYYYMMDD
+		if len(base) < len("qccg-YYYYMMDD.log") {
 			continue
 		}
-		datePart := strings.TrimPrefix(strings.TrimSuffix(base, ".log"), "qoder2api-")
+		datePart := strings.TrimPrefix(strings.TrimSuffix(base, ".log"), "qccg-")
 		if datePart == today {
 			continue
 		}
@@ -167,7 +167,7 @@ func cleanupOldArchives(dir string, retain int) {
 		return
 	}
 	cutoff := time.Now().AddDate(0, 0, -retain)
-	for _, glob := range []string{"qoder2api-*.log", "qoder2api-*.log.gz"} {
+	for _, glob := range []string{"qccg-*.log", "qccg-*.log.gz"} {
 		matches, _ := filepath.Glob(filepath.Join(dir, glob))
 		for _, p := range matches {
 			st, err := os.Stat(p)

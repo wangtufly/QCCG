@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"qoder2api/logger"
+	"qccg/logger"
 )
 
 func (b *bridge) handleChatCompletions(w http.ResponseWriter, r *http.Request) {

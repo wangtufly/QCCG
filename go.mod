@@ -1,4 +1,4 @@
-module qoder2api
+module qccg
 
 go 1.23.0
 

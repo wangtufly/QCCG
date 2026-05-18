@@ -152,7 +152,7 @@ func TestLookupMapping_SkipsEmptyEntries(t *testing.T) {
 
 func TestMapModel_DefaultMappingFallback(t *testing.T) {
 	// 直接验证内置 defaultModelMapping 中的关键字均能通过 lookupMapping 命中长模型名。
-	// 不调 mapModel() 是为了避开 ~/.qoder2api/settings.json 可能存在的用户覆盖，
+	// 不调 mapModel() 是为了避开 ~/.qccg/settings.json 可能存在的用户覆盖，
 	// 让单测在任意环境（含已配置过映射的开发机）都稳定通过。
 	cases := map[string]string{
 		// Claude 三档

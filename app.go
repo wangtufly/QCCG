@@ -12,8 +12,8 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
-	"qoder2api/account"
-	"qoder2api/logger"
+	"qccg/account"
+	"qccg/logger"
 )
 
 type App struct {
@@ -22,7 +22,7 @@ type App struct {
 	bridgeSrv   *http.Server
 	bridgeMu    sync.Mutex
 	bridgePort  int
-	bridgeToken string // 自定义鉴权 token，空则使用默认值 "qoder2api"
+	bridgeToken string // 自定义鉴权 token，空则使用默认值 "qccg"
 }
 
 func NewApp() *App {
@@ -34,7 +34,7 @@ func (a *App) startup(ctx context.Context) {
 
 	// 文件日志在 Info("Application started") 之前初始化，确保启动期日志也能落盘
 	if home, err := os.UserHomeDir(); err == nil {
-		logDir := filepath.Join(home, ".qoder2api", "logs")
+		logDir := filepath.Join(home, ".qccg", "logs")
 		if err := logger.InitFile(logDir); err != nil {
 			fmt.Fprintf(os.Stderr, "[logger] init file sink failed: %v (logs will only be in memory + stdout)\n", err)
 		}
@@ -337,7 +337,7 @@ func (a *App) ListQoderModels() ([]QoderModel, error) {
 	return b.listAvailableModels()
 }
 
-// CleanupAllData 清理 qoder2api 产生的本地数据与注入配置。
+// CleanupAllData 清理 qccg 产生的本地数据与注入配置。
 func (a *App) CleanupAllData() error {
 	if err := a.StopBridge(); err != nil {
 		logger.Error("CleanupAllData stop bridge failed: %v", err)
@@ -362,7 +362,7 @@ func (a *App) CleanupAllData() error {
 	if err != nil {
 		return fmt.Errorf("home dir: %w", err)
 	}
-	dataDir := filepath.Join(home, ".qoder2api")
+	dataDir := filepath.Join(home, ".qccg")
 	if err := os.RemoveAll(dataDir); err != nil {
 		return fmt.Errorf("remove %s: %w", dataDir, err)
 	}

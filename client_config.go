@@ -11,12 +11,12 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	"qoder2api/logger"
+	"qccg/logger"
 )
 
 // ClientConfig 是返回前端的客户端配置状态。
 //   - ConfigPath/BaseURL/EnvVars 仅作展示
-//   - Applied 表示「已经被 qoder2api 标注过」(由 Marker 字段判断，避免误判用户原本就有的配置)
+//   - Applied 表示「已经被 qccg 标注过」(由 Marker 字段判断，避免误判用户原本就有的配置)
 //   - Model 是当前配置文件里读出来的「主力」模型名（仅展示）
 type ClientConfig struct {
 	Type       string `json:"type"`
@@ -30,11 +30,11 @@ type ClientConfig struct {
 	Error      string `json:"error,omitempty"`
 }
 
-// 内部 marker：用于识别「这一段配置是 qoder2api 写入的」，
+// 内部 marker：用于识别「这一段配置是 qccg 写入的」，
 // 移除时只移除自己写的部分，不动用户其它配置。
 const (
-	qoderProviderID    = "qoder2api"
-	defaultQoderAPIKey = "qoder2api"
+	qoderProviderID    = "qccg"
+	defaultQoderAPIKey = "qccg"
 	codexProviderURL   = "/v1"
 )
 
@@ -46,8 +46,18 @@ func (a *App) effectiveToken() string {
 }
 
 func hasBackupFile(home, clientType string) bool {
-	_, err := os.Stat(backupPath(home, clientType))
-	return err == nil
+	if _, err := os.Stat(backupPath(home, clientType)); err == nil {
+		return true
+	}
+	if clientType == "codex" {
+		if _, err := os.Stat(codexAuthBackupPath(home)); err == nil {
+			return true
+		}
+		if _, err := os.Stat(codexAuthMissingMarkerPath(home)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func bridgeBaseURL(port int) string {
@@ -118,17 +128,26 @@ func (a *App) ApplyClientConfig(clientType, model string) error {
 
 // ClientConfigFile 是返回前端的「主配置文件原文 + 路径」结构，用于编辑器展示
 type ClientConfigFile struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
-	Format  string `json:"format"` // "json" / "toml" / "dotenv"
-	Existed bool   `json:"existed"`
+	Path       string             `json:"path"`
+	Content    string             `json:"content"`
+	Format     string             `json:"format"` // "json" / "toml" / "dotenv"
+	Existed    bool               `json:"existed"`
+	ExtraFiles []ClientConfigFile `json:"extra_files,omitempty"`
 }
 
 func backupPath(home, clientType string) string {
-	return filepath.Join(home, ".qoder2api", "backups", clientType+"_config.bak")
+	return filepath.Join(home, ".qccg", "backups", clientType+"_config.bak")
 }
 
-// BackupClientConfigFile 在保存前把原文件备份到 ~/.qoder2api/backups/<type>_config.bak
+func codexAuthBackupPath(home string) string {
+	return filepath.Join(home, ".qccg", "backups", "codex_auth.bak")
+}
+
+func codexAuthMissingMarkerPath(home string) string {
+	return filepath.Join(home, ".qccg", "backups", "codex_auth.missing")
+}
+
+// BackupClientConfigFile 在保存前把原文件备份到 ~/.qccg/backups/<type>_config.bak
 func (a *App) BackupClientConfigFile(clientType string) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -140,16 +159,46 @@ func (a *App) BackupClientConfigFile(clientType string) error {
 	}
 	data, err := os.ReadFile(src)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
+		if !os.IsNotExist(err) {
+			return err
 		}
-		return err
+	} else {
+		dst := backupPath(home, clientType)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+		if err := atomicWriteFile(dst, data, 0o644); err != nil {
+			return err
+		}
 	}
-	dst := backupPath(home, clientType)
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
+
+	if clientType == "codex" {
+		authSrc := filepath.Join(home, ".codex", "auth.json")
+		authBak := codexAuthBackupPath(home)
+		missingMarker := codexAuthMissingMarkerPath(home)
+		authData, authErr := os.ReadFile(authSrc)
+		if authErr != nil {
+			if !os.IsNotExist(authErr) {
+				return authErr
+			}
+			if err := os.MkdirAll(filepath.Dir(missingMarker), 0o755); err != nil {
+				return err
+			}
+			if err := atomicWriteFile(missingMarker, []byte("missing"), 0o644); err != nil {
+				return err
+			}
+			_ = os.Remove(authBak)
+		} else {
+			if err := os.MkdirAll(filepath.Dir(authBak), 0o755); err != nil {
+				return err
+			}
+			if err := atomicWriteFile(authBak, authData, 0o644); err != nil {
+				return err
+			}
+			_ = os.Remove(missingMarker)
+		}
 	}
-	return atomicWriteFile(dst, data, 0o644)
+	return nil
 }
 
 // HasClientConfigBackup 返回指定 client 是否存在备份文件
@@ -177,12 +226,40 @@ func (a *App) RestoreClientConfigFile(clientType string) error {
 		return err
 	}
 	_ = os.Remove(bak)
+
+	if clientType == "codex" {
+		authPath := filepath.Join(home, ".codex", "auth.json")
+		authBak := codexAuthBackupPath(home)
+		missingMarker := codexAuthMissingMarkerPath(home)
+		if authData, authErr := os.ReadFile(authBak); authErr == nil {
+			if err := atomicWriteFile(authPath, authData, 0o644); err != nil {
+				return err
+			}
+			_ = os.Remove(authBak)
+			_ = os.Remove(missingMarker)
+		} else if _, markerErr := os.Stat(missingMarker); markerErr == nil {
+			_ = os.Remove(authPath)
+			_ = os.Remove(missingMarker)
+		}
+	}
+
 	logger.Info("Restored %s config from backup", clientType)
 	return nil
 }
 
 // ReadClientConfigFile 读取指定 client 主配置文件原文（不做任何解析/合并），
 // 用于前端编辑器展示。若文件不存在返回空 content + Existed=false（不是错误）。
+func readSingleClientConfigFile(path, format string) (ClientConfigFile, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ClientConfigFile{Path: path, Format: format, Existed: false}, nil
+		}
+		return ClientConfigFile{}, err
+	}
+	return ClientConfigFile{Path: path, Content: string(data), Format: format, Existed: true}, nil
+}
+
 func (a *App) ReadClientConfigFile(clientType string) (*ClientConfigFile, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -192,34 +269,26 @@ func (a *App) ReadClientConfigFile(clientType string) (*ClientConfigFile, error)
 	if path == "" {
 		return nil, fmt.Errorf("unknown client type: %s", clientType)
 	}
-	data, err := os.ReadFile(path)
+	mainFile, err := readSingleClientConfigFile(path, format)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return &ClientConfigFile{Path: path, Format: format, Existed: false}, nil
-		}
 		return nil, err
 	}
-	return &ClientConfigFile{Path: path, Content: string(data), Format: format, Existed: true}, nil
+	result := mainFile
+	if clientType == "codex" {
+		extraPath := filepath.Join(home, ".codex", "auth.json")
+		extra, err := readSingleClientConfigFile(extraPath, "json")
+		if err != nil {
+			return nil, err
+		}
+		result.ExtraFiles = []ClientConfigFile{extra}
+	}
+	return &result, nil
 }
 
 // SaveClientConfigFile 保存编辑器内容回主配置文件，按 format 做语法校验。
 // .env 不校验（dotenv 没有官方语法）；JSON / TOML 校验失败直接返回 error，
 // 不写入磁盘，避免破坏原文件。
-func (a *App) SaveClientConfigFile(clientType, content string) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	path, format := mainConfigPath(home, clientType)
-	if path == "" {
-		return fmt.Errorf("unknown client type: %s", clientType)
-	}
-	// 写入前先备份原文件（仅当备份不存在时才备份，保留最早的"干净"版本）
-	if !a.HasClientConfigBackup(clientType) {
-		if err := a.BackupClientConfigFile(clientType); err != nil {
-			logger.Info("Backup skipped for %s: %v", clientType, err)
-		}
-	}
+func validateConfigContent(format, content string) error {
 	switch format {
 	case "json":
 		var v interface{}
@@ -232,10 +301,57 @@ func (a *App) SaveClientConfigFile(clientType, content string) error {
 			return fmt.Errorf("TOML 语法错误: %w", err)
 		}
 	}
+	return nil
+}
+
+func (a *App) SaveClientConfigFile(clientType, content string) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	path, format := mainConfigPath(home, clientType)
+	if path == "" {
+		return fmt.Errorf("unknown client type: %s", clientType)
+	}
+	if !a.HasClientConfigBackup(clientType) {
+		if err := a.BackupClientConfigFile(clientType); err != nil {
+			logger.Info("Backup skipped for %s: %v", clientType, err)
+		}
+	}
+	if err := validateConfigContent(format, content); err != nil {
+		return err
+	}
 	if err := atomicWriteFile(path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("写入失败: %w", err)
 	}
 	logger.Info("Saved %s config file: %s (%d bytes)", clientType, path, len(content))
+	return nil
+}
+
+func (a *App) SaveAdditionalClientConfigFile(clientType, path, format, content string) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	if clientType != "codex" {
+		return fmt.Errorf("client type %s has no additional config files", clientType)
+	}
+	expectedPath := filepath.Join(home, ".codex", "auth.json")
+	if path != expectedPath {
+		return fmt.Errorf("unsupported additional config path: %s", path)
+	}
+	if !a.HasClientConfigBackup(clientType) {
+		if err := a.BackupClientConfigFile(clientType); err != nil {
+			logger.Info("Backup skipped for %s: %v", clientType, err)
+		}
+	}
+	if err := validateConfigContent(format, content); err != nil {
+		return err
+	}
+	if err := atomicWriteFile(path, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("写入失败: %w", err)
+	}
+	logger.Info("Saved additional %s config file: %s (%d bytes)", clientType, path, len(content))
 	return nil
 }
 
@@ -425,7 +541,7 @@ func removeClaudeConfig(home string) error {
 	if err := writeJSONObjectOrdered(path, root); err != nil {
 		return err
 	}
-	logger.Info("Cleaned qoder2api fields from %s", path)
+	logger.Info("Cleaned qccg fields from %s", path)
 	return nil
 }
 
@@ -452,22 +568,22 @@ func readClaudeStatus(home string) (bool, string, error) {
 // Codex 读 ~/.codex/config.toml + ~/.codex/auth.json。
 // config.toml 关键字段：
 //
-//	model_provider = "qoder2api"
+//	model_provider = "qccg"
 //	model = "gpt-5"  # 可选
-//	[model_providers.qoder2api]
-//	name = "Qoder2API"
+//	[model_providers.qccg]
+//	name = "QCCG"
 //	base_url = "http://127.0.0.1:8963/v1"
 //	wire_api = "responses"
 //
 // auth.json:
 //
-//	{ "OPENAI_API_KEY": "qoder2api" }
+//	{ "OPENAI_API_KEY": "qccg" }
 //
 // 同样保留用户其它 model_providers 不动。
 
 func codexProviderTable(port int) map[string]interface{} {
 	return map[string]interface{}{
-		"name":     "Qoder2API",
+		"name":     "QCCG",
 		"base_url": bridgeBaseURL(port) + codexProviderURL,
 		"wire_api": "responses",
 	}
@@ -558,7 +674,7 @@ func removeCodexConfig(home string) error {
 		}
 	}
 
-	// auth.json: 只移除我们写的 OPENAI_API_KEY=qoder2api
+	// auth.json: 只移除我们写的 OPENAI_API_KEY=qccg
 	authPath := filepath.Join(dir, "auth.json")
 	if auth, err := readJSONObjectOrEmpty(authPath); err == nil {
 		if v, ok := auth["OPENAI_API_KEY"].(string); ok && v == defaultQoderAPIKey {
@@ -570,7 +686,7 @@ func removeCodexConfig(home string) error {
 			_ = writeJSONObjectOrdered(authPath, auth)
 		}
 	}
-	logger.Info("Cleaned qoder2api fields from Codex config")
+	logger.Info("Cleaned qccg fields from Codex config")
 	return nil
 }
 
@@ -598,9 +714,9 @@ func readCodexStatus(home string) (bool, string, error) {
 //
 //	~/.gemini/.env:
 //	  GOOGLE_GEMINI_BASE_URL=http://127.0.0.1:8963
-//	  GEMINI_API_KEY=qoder2api
+//	  GEMINI_API_KEY=qccg
 //	~/.gemini/settings.json:
-//	  { "_qoder2api_managed": true, "selectedAuthType": "..." }   # 仅埋 marker
+//	  { "_qccg_managed": true, "selectedAuthType": "..." }   # 仅埋 marker
 //
 // .env 用 dotenv 风格的 KV 解析，保留用户其它 KEY 行；marker 进 settings.json
 // 因为 .env 没有"嵌套字段"概念，无法保存 marker。
@@ -641,7 +757,7 @@ func removeGeminiConfig(home string) error {
 			_ = writeDotEnv(envPath, envMap)
 		}
 	}
-	logger.Info("Cleaned qoder2api fields from Gemini config")
+	logger.Info("Cleaned qccg fields from Gemini config")
 	return nil
 }
 
@@ -703,7 +819,7 @@ func writeDotEnv(path string, m map[string]string) error {
 	}
 	sort.Strings(keys)
 	var b strings.Builder
-	b.WriteString("# Generated/maintained by Qoder2API\n")
+	b.WriteString("# Generated/maintained by QCCG\n")
 	for _, k := range keys {
 		v := m[k]
 		// 含空格/引号/特殊字符 → 加双引号并转义

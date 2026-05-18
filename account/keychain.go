@@ -6,7 +6,7 @@ import (
 	keychain "github.com/zalando/go-keyring"
 )
 
-const keychainService = "qoder2api"
+const keychainService = "qccg"
 
 func SaveSecret(accountID, secret string) error {
 	return keychain.Set(keychainService, accountID, secret)

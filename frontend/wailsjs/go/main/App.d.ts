@@ -50,6 +50,8 @@ export function ReorderAccounts(arg1:Array<string>):Promise<void>;
 
 export function RestoreClientConfigFile(arg1:string):Promise<void>;
 
+export function SaveAdditionalClientConfigFile(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
 export function SaveClientConfigFile(arg1:string,arg2:string):Promise<void>;
 
 export function SaveSettings(arg1:account.Settings):Promise<void>;

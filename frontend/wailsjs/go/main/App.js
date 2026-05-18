@@ -94,6 +94,10 @@ export function RestoreClientConfigFile(arg1) {
   return window['go']['main']['App']['RestoreClientConfigFile'](arg1);
 }
 
+export function SaveAdditionalClientConfigFile(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SaveAdditionalClientConfigFile'](arg1, arg2, arg3, arg4);
+}
+
 export function SaveClientConfigFile(arg1, arg2) {
   return window['go']['main']['App']['SaveClientConfigFile'](arg1, arg2);
 }

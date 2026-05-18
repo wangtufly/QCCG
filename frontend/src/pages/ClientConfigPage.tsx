@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { Wand2 as WandIcon, History, FolderSync, Rocket, Save, AlertTriangle, RefreshCw } from 'lucide-react'
+import { Wand2 as WandIcon, History, FolderSync, Rocket, Save, AlertTriangle, RefreshCw, CirclePlus } from 'lucide-react'
 import ConfigEditor, { ConfigEditorHandle } from '../components/ConfigEditor'
 import {
   GetClientConfigs,
@@ -7,6 +7,7 @@ import {
   GetStatus,
   ReadClientConfigFile,
   SaveClientConfigFile,
+  SaveAdditionalClientConfigFile,
   GetSettings,
   SaveSettings,
   HasClientConfigBackup,
@@ -46,8 +47,8 @@ const CLAUDE_MODEL_SLOTS: Array<{ envKey: string; fromKey: string }> = [
   { envKey: 'ANTHROPIC_DEFAULT_HAIKU_MODEL',  fromKey: 'haiku'  },
 ]
 
-const PREVIEW_MAPPING_KEY = '_qoder2api_model_mapping'
-const QODER_API_KEY = 'qoder2api'
+const PREVIEW_MAPPING_KEY = '_qccg_model_mapping'
+const QODER_API_KEY = 'qccg'
 
 // ============== MappingSelect ==============
 interface MappingSelectProps {
@@ -116,7 +117,7 @@ function applyConfigToContent(content: string, format: string, agentType: string
     try {
       const lines = content.trimEnd().split('\n')
       const filtered = lines.filter(l => !l.startsWith('model_provider'))
-      filtered.push(`model_provider = "qoder2api"`)
+      filtered.push(`model_provider = "qccg"`)
       return filtered.join('\n') + '\n'
     } catch { return content }
   }
@@ -131,30 +132,15 @@ function applyConfigToContent(content: string, format: string, agentType: string
   return content
 }
 
-function removeConfigFromContent(content: string, format: string, agentType: string): string {
-  if (format === 'json') {
+function applyAdditionalConfigToContent(content: string, format: string, agentType: string, path: string, apiKey: string): string {
+  if (agentType === 'codex' && format === 'json' && path.endsWith('/.codex/auth.json')) {
     try {
       const obj = content.trim() ? JSON.parse(content) : {}
-      if (obj['env'] && typeof obj['env'] === 'object') {
-        const env = obj['env'] as Record<string, string>
-        if (agentType === 'claude') {
-          delete env['ANTHROPIC_BASE_URL']
-          delete env['ANTHROPIC_AUTH_TOKEN']
-          delete env['ANTHROPIC_MODEL']
-          for (const { envKey } of CLAUDE_MODEL_SLOTS) delete env[envKey]
-        }
-        if (Object.keys(env).length === 0) delete obj['env']
-      }
+      obj['OPENAI_API_KEY'] = apiKey
       return JSON.stringify(obj, null, 2) + '\n'
-    } catch { return content }
-  }
-  if (format === 'toml') {
-    return content.split('\n').filter(l => !l.startsWith('model_provider')).join('\n') + '\n'
-  }
-  if (format === 'dotenv') {
-    return content.split('\n').filter(l =>
-      !l.startsWith('GOOGLE_GEMINI_BASE_URL=') && !l.startsWith('GEMINI_API_KEY=')
-    ).join('\n') + '\n'
+    } catch {
+      return content
+    }
   }
   return content
 }
@@ -185,10 +171,12 @@ function sortJSONKeys(obj: unknown): unknown {
 }
 
 function formatContent(content: string, format: string): string {
-  if (format !== 'json') throw new Error(`${format} 不支持自动整理（会丢失注释）`)
   const trimmed = content.trim()
   if (!trimmed) return ''
-  return JSON.stringify(sortJSONKeys(JSON.parse(trimmed)), null, 2) + '\n'
+  if (format === 'json') {
+    return JSON.stringify(sortJSONKeys(JSON.parse(trimmed)), null, 2) + '\n'
+  }
+  throw new Error(`${format} 暂不支持自动整理`)
 }
 
 function escapeRe(s: string): string {
@@ -250,7 +238,7 @@ function patchMappingPreview(content: string, format: string, mapping: Record<st
   if (format === 'toml') {
     const head = cleaned.replace(/\s+$/, '')
     const lines: string[] = []
-    lines.push(`[${PREVIEW_MAPPING_KEY}]  # qoder2api 模型映射预览（仅展示，由 Settings.json 管理；保存时不会写入此文件）`)
+    lines.push(`[${PREVIEW_MAPPING_KEY}]  # qccg 模型映射预览（仅展示，由 Settings.json 管理；保存时不会写入此文件）`)
     for (const [k, v] of Object.entries(mapping)) {
       const key = /^[A-Za-z0-9_-]+$/.test(k) ? k : JSON.stringify(k)
       lines.push(`${key} = ${JSON.stringify(v)}`)
@@ -282,6 +270,7 @@ export default function ClientConfigPage() {
   const [fileSaving, setFileSaving] = useState(false)
   const [fileContent, setFileContent] = useState('')
   const [fileMeta, setFileMeta] = useState<{ path: string; format: string; existed: boolean } | null>(null)
+  const [extraFiles, setExtraFiles] = useState<Array<{ path: string; format: string; existed: boolean; content: string }>>([])
   const [fileDirty, setFileDirty] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
   const [formatStatus, setFormatStatus] = useState<'idle' | 'done' | 'error'>('idle')
@@ -342,11 +331,19 @@ export default function ClientConfigPage() {
       const r = await ReadClientConfigFile(type)
       setFileContent(r?.content || '')
       setFileMeta({ path: r?.path || '', format: r?.format || '', existed: !!r?.existed })
+      const extras = (r?.extra_files || []).map(f => ({
+        path: f.path || '',
+        format: f.format || '',
+        existed: !!f.existed,
+        content: f.content || '',
+      }))
+      setExtraFiles(extras)
       setHasBackup(await HasClientConfigBackup(type))
     } catch (err: any) {
       setFileError(String(err?.message || err))
       setFileContent('')
       setFileMeta(null)
+      setExtraFiles([])
     } finally {
       setFileLoading(false)
     }
@@ -381,12 +378,12 @@ export default function ClientConfigPage() {
     let applied = applyConfigToContent(fileContent, fileMeta.format, cfg.type, status.port, bridgeToken)
     applied = patchMappingPreview(applied, fileMeta.format, bucket || {}, cfg.type)
     setFileContent(applied)
-    setFileDirty(true)
-  }
-
-  const handleRemove = (cfg: ClientConfig) => {
-    if (!fileMeta?.format) return
-    setFileContent(removeConfigFromContent(fileContent, fileMeta.format, cfg.type))
+    if (extraFiles.length > 0) {
+      setExtraFiles(prev => prev.map(extra => ({
+        ...extra,
+        content: applyAdditionalConfigToContent(extra.content, extra.format, cfg.type, extra.path, bridgeToken),
+      })))
+    }
     setFileDirty(true)
   }
 
@@ -420,6 +417,9 @@ export default function ClientConfigPage() {
       if (fileDirty) {
         const cleaned = stripMappingPreview(fileContent, fileMeta?.format || '')
         await SaveClientConfigFile(activeType, cleaned)
+        for (const extra of extraFiles) {
+          await SaveAdditionalClientConfigFile(activeType, extra.path, extra.format, extra.content)
+        }
         setFileDirty(false)
       }
       if (mappingDirty && pendingMapping) {
@@ -510,7 +510,7 @@ export default function ClientConfigPage() {
               : <div className="config-card-icon-emoji">{activeCfg.icon}</div>}
             <div>
               <h3>{activeCfg.name}</h3>
-              <p>{activeCfg.applied ? '已配置（由 qoder2api 管理）' : '未配置'}</p>
+              <p>{activeCfg.applied ? '已配置（由 qccg 管理）' : '未配置'}</p>
             </div>
             <div className={`config-status-dot ${activeCfg.applied ? 'active' : ''}`} />
           </div>
@@ -549,7 +549,7 @@ export default function ClientConfigPage() {
                   className={`icon-btn icon-btn-format${formatStatus === 'error' ? ' icon-btn-danger' : ''}${formatStatus === 'done' ? ' btn-format-flash' : ''}`}
                   onClick={handleFormatFile}
                   disabled={fileLoading || !fileContent.trim() || formatStatus !== 'idle'}
-                  title="格式化（仅 JSON）"
+                  title='格式化（JSON）'
                 >
                   <WandIcon key={formatStatus} size={18} className={formatStatus === 'done' ? 'wand-icon-animate' : ''} />
                 </button>
@@ -594,6 +594,34 @@ export default function ClientConfigPage() {
                 minLines={16}
               />
             </div>
+
+            {extraFiles.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                {extraFiles.map((extra, idx) => (
+                  <div key={extra.path || idx} style={{ marginTop: idx === 0 ? 0 : 14 }}>
+                    <div className="config-section-divider">
+                      <span className="section-title">🧩 附加配置文件</span>
+                      <code className="section-path">{extra.path}</code>
+                      <span className="meta" style={extra.existed ? { color: 'var(--bs-success, #198754)' } : undefined}>
+                        {extra.existed ? ' · 已加载' : ' · 文件不存在'}
+                      </span>
+                    </div>
+                    <div style={{ marginTop: 8 }}>
+                      <ConfigEditor
+                        value={extra.content}
+                        onChange={v => {
+                          setExtraFiles(prev => prev.map((f, i) => i === idx ? { ...f, content: v } : f))
+                          setFileDirty(true)
+                        }}
+                        format={extra.format as 'json' | 'toml' | 'dotenv' | undefined}
+                        placeholderText={fileLoading ? '加载中…' : '附加配置文件内容…'}
+                        minLines={8}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -675,7 +703,9 @@ function ModelMappingSection({ agent, qoderModels, initialMappings, modelsLoadin
         <span className="meta">客户端模型名 → Qoder model.key</span>
         <span className="divider-spacer" />
         <button className="btn btn-secondary btn-sm" onClick={fillDefaults} title="按家族关键字一键填充默认条目">默认</button>
-        <button className="btn btn-secondary btn-sm" onClick={addRow}>+ 加一行</button>
+        <button className="icon-btn icon-btn-apply" onClick={addRow} title="加一行" aria-label="加一行">
+          <CirclePlus size={16} strokeWidth={2.2} />
+        </button>
         <button className="icon-btn icon-btn-reload" onClick={onRefreshModels} disabled={modelsLoading} title="刷新上游模型列表">
           <RefreshCw size={16} className={modelsLoading ? 'spin' : ''} />
         </button>

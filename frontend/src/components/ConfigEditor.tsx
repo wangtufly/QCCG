@@ -4,9 +4,10 @@ import { json } from '@codemirror/lang-json'
 import { EditorState } from '@codemirror/state'
 import { placeholder } from '@codemirror/view'
 import { linter, Diagnostic } from '@codemirror/lint'
+import { StreamLanguage } from '@codemirror/language'
+import { toml as tomlMode } from '@codemirror/legacy-modes/mode/toml'
 
 export interface ConfigEditorHandle {
-  /** 格式化当前内容（仅 JSON），返回是否成功 */
   formatContent: () => boolean
 }
 
@@ -65,7 +66,10 @@ const ConfigEditor = forwardRef<ConfigEditorHandle, ConfigEditorProps>(({
       const raw = view.state.doc.toString()
       if (!raw.trim()) return false
       try {
-        const formatted = JSON.stringify(JSON.parse(raw), null, 2) + '\n'
+        let formatted = raw
+        if (format === 'json') {
+          formatted = JSON.stringify(JSON.parse(raw), null, 2) + '\n'
+        }
         view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: formatted } })
         onChangeRef.current(formatted)
         return true
@@ -75,15 +79,22 @@ const ConfigEditor = forwardRef<ConfigEditorHandle, ConfigEditorProps>(({
     },
   }), [format])
 
-  const jsonLinter = useMemo(() => linter((view) => {
-    if (format !== 'json') return []
+  const syntaxLinter = useMemo(() => linter((view) => {
     const doc = view.state.doc.toString()
     if (!doc.trim()) return []
     const diagnostics: Diagnostic[] = []
-    try { JSON.parse(doc) } catch (e) {
+    try {
+      if (format === 'json') {
+        JSON.parse(doc)
+      } else if (format === 'toml') {
+        return []
+      }
+    } catch (e) {
       diagnostics.push({
-        from: 0, to: doc.length, severity: 'error',
-        message: e instanceof SyntaxError ? e.message : 'Invalid JSON',
+        from: 0,
+        to: doc.length,
+        severity: 'error',
+        message: e instanceof Error ? e.message : `Invalid ${format.toUpperCase()}`,
       })
     }
     return diagnostics
@@ -97,10 +108,11 @@ const ConfigEditor = forwardRef<ConfigEditorHandle, ConfigEditorProps>(({
     const extensions = [
       basicSetup,
       ...(format === 'json' ? [json()] : []),
+      ...(format === 'toml' ? [StreamLanguage.define(tomlMode)] : []),
       placeholder(placeholderText),
       baseTheme,
       EditorView.theme({ '&': { minHeight: `${minHeightPx}px` }, '.cm-scroller': { overflow: 'auto' } }),
-      jsonLinter,
+      syntaxLinter,
       EditorView.updateListener.of((update) => {
         if (update.docChanged && !suppressRef.current) onChangeRef.current(update.state.doc.toString())
       }),
@@ -110,7 +122,7 @@ const ConfigEditor = forwardRef<ConfigEditorHandle, ConfigEditorProps>(({
     viewRef.current = view
     return () => { view.destroy(); viewRef.current = null }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [format, minLines, jsonLinter])
+  }, [format, minLines, syntaxLinter])
 
   useEffect(() => {
     const view = viewRef.current

@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"qoder2api/logger"
+	"qccg/logger"
 )
 
 // OAuth 认证流程

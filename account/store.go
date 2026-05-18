@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-const storeDir = ".qoder2api/accounts"
-const settingsFile = ".qoder2api/settings.json"
+const storeDir = ".qccg/accounts"
+const settingsFile = ".qccg/settings.json"
 
 var mu sync.Mutex
 

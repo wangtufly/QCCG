@@ -16,7 +16,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="topbar-left">
-          <span className="topbar-title">Qoder2API</span>
+          <span className="topbar-title">QCCG</span>
           <StatusIndicator />
         </div>
       </header>

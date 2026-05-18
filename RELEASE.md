@@ -1,4 +1,4 @@
-# Qoder2API 发布流程指南
+# QCCG 发布流程指南
 
 ## 📦 创建新版本
 
@@ -71,9 +71,9 @@ git tag -a v1.0.1 -m "Fix bridge connection issue"
 
 | 平台 | 架构 | 文件 |
 |------|------|------|
-| macOS | Intel (x64) | `Qoder2API-vX.Y.Z-darwin-amd64.dmg` |
-| macOS | Apple Silicon | `Qoder2API-vX.Y.Z-darwin-arm64.dmg` |
-| Linux | x64 | `qoder2api-vX.Y.Z-linux-amd64.tar.gz` |
+| macOS | Intel (x64) | `QCCG-vX.Y.Z-darwin-amd64.dmg` |
+| macOS | Apple Silicon | `QCCG-vX.Y.Z-darwin-arm64.dmg` |
+| Linux | x64 | `qccg-vX.Y.Z-linux-amd64.tar.gz` |
 
 ## 💡 注意事项
 

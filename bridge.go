@@ -11,8 +11,8 @@ import (
 
 	_ "embed"
 
-	"qoder2api/account"
-	"qoder2api/logger"
+	"qccg/account"
+	"qccg/logger"
 )
 
 //go:embed baseprompt.json

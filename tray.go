@@ -7,8 +7,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
-	"qoder2api/account"
-	"qoder2api/logger"
+	"qccg/account"
+	"qccg/logger"
 )
 
 // buildAppMenu 构造 wails 应用菜单（macOS 顶部菜单栏 / Windows&Linux 窗口菜单）。
@@ -20,8 +20,8 @@ func (a *App) buildAppMenu() *menu.Menu {
 		m.Append(menu.AppMenu())
 	}
 
-	// Qoder2API 主菜单（macOS 上会作为应用菜单出现）
-	app := m.AddSubmenu("Qoder2API")
+	// QCCG 主菜单（macOS 上会作为应用菜单出现）
+	app := m.AddSubmenu("QCCG")
 	app.AddText("显示主界面", keys.CmdOrCtrl("0"), func(_ *menu.CallbackData) {
 		a.showWindow()
 	})

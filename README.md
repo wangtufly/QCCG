@@ -1,11 +1,11 @@
-# Qoder2API
+# QCCG
 
 [![GitHub Release](https://img.shields.io/github/v/release/wangtufly/qoder2API)](https://github.com/wangtufly/qoder2API/releases)
 [![Go](https://img.shields.io/badge/Go-1.23-blue)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **鸣谢：**
-- [qoder2api](https://github.com/cubk1/qoder2api)：基于该项目的改造和扩展
+- [qccg](https://github.com/cubk1/qccg)：基于该项目的改造和扩展
 - [qodercli-reverse](https://github.com/alingse/qodercli-reverse)：参考了其 Qoder API 接口实现
 
 将 [Qoder](https://qoder.ai) 账号转换为本地 OpenAI / Claude / Codex 兼容 API，供 Cursor、ChatGPT 等客户端直接使用。
@@ -24,10 +24,10 @@
 
 从 [Releases](../../releases) 下载对应架构的 `.dmg` 文件：
 
-- `Qoder2API-*-darwin-arm64.dmg` — Apple Silicon (M1/M2/M3)
-- `Qoder2API-*-darwin-amd64.dmg` — Intel
+- `QCCG-*-darwin-arm64.dmg` — Apple Silicon (M1/M2/M3)
+- `QCCG-*-darwin-amd64.dmg` — Intel
 
-打开 DMG，将 `Qoder2API.app` 拖入 Applications 文件夹。
+打开 DMG，将 `QCCG.app` 拖入 Applications 文件夹。
 
 #### 绕过 macOS 安全限制（Gatekeeper）
 
@@ -35,7 +35,7 @@
 
 **方式一：右键打开（推荐）**
 
-1. 在 Finder 中找到 `Qoder2API.app`
+1. 在 Finder 中找到 `QCCG.app`
 2. 按住 `Control` 键单击（或右键单击）
 3. 选择「打开」
 4. 在弹出的对话框中再次点击「打开」
@@ -45,19 +45,19 @@
 **方式二：命令行移除隔离属性**
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/Qoder2API.app
+xattr -dr com.apple.quarantine /Applications/QCCG.app
 ```
 
 执行后直接双击即可启动，无需再确认。
 
 ### Linux
 
-从 Releases 下载 `qoder2api-*-linux-amd64.tar.gz`，解压后直接运行：
+从 Releases 下载 `qccg-*-linux-amd64.tar.gz`，解压后直接运行：
 
 ```bash
-tar -xzf qoder2api-*-linux-amd64.tar.gz
-chmod +x qoder2api
-./qoder2api
+tar -xzf qccg-*-linux-amd64.tar.gz
+chmod +x qccg
+./qccg
 ```
 
 ## 使用
@@ -82,7 +82,7 @@ http://127.0.0.1:8963
 
 ### Cursor 配置示例
 
-在 Cursor 设置 → Models → OpenAI API Key 填入 Bridge Token（默认 `qoder2api`），Base URL 填入：
+在 Cursor 设置 → Models → OpenAI API Key 填入 Bridge Token（默认 `qccg`），Base URL 填入：
 
 ```
 http://127.0.0.1:8963

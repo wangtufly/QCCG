@@ -41,7 +41,7 @@ export default function SettingsPage() {
   }
 
   const handleCleanupAll = async () => {
-    const ok = await Confirm('危险操作确认', '将清理 qoder2api 本地数据（~/.qoder2api）、客户端注入配置和 Keychain 密钥，是否继续？')
+    const ok = await Confirm('危险操作确认', '将清理 qccg 本地数据（~/.qccg）、客户端注入配置和 Keychain 密钥，是否继续？')
     if (!ok) return
     try {
       setCleanupBusy(true)
@@ -57,7 +57,7 @@ export default function SettingsPage() {
     }
   }
 
-  const effectiveToken = settings.bridge_token || 'qoder2api'
+  const effectiveToken = settings.bridge_token || 'qccg'
 
   return (
     <div className="settings-page">
@@ -201,7 +201,7 @@ export default function SettingsPage() {
           <div className="storage-info">
             <div className="storage-item">
               <span className="storage-label">账号数据</span>
-              <code className="storage-path">~/.qoder2api/accounts/</code>
+              <code className="storage-path">~/.qccg/accounts/</code>
             </div>
             <div className="storage-item">
               <span className="storage-label">密钥存储</span>
@@ -209,11 +209,11 @@ export default function SettingsPage() {
             </div>
             <div className="storage-item">
               <span className="storage-label">配置文件</span>
-              <code className="storage-path">~/.qoder2api/settings.json</code>
+              <code className="storage-path">~/.qccg/settings.json</code>
             </div>
             <div className="storage-item">
               <span className="storage-label">配置备份</span>
-              <code className="storage-path">~/.qoder2api/backups/</code>
+              <code className="storage-path">~/.qccg/backups/</code>
             </div>
             <div className="storage-item">
               <span className="storage-label">数据清理</span>
@@ -221,7 +221,7 @@ export default function SettingsPage() {
                 className="btn btn-danger"
                 onClick={handleCleanupAll}
                 disabled={cleanupBusy}
-                title="清理 qoder2api 本地数据、注入配置与密钥"
+                title="清理 qccg 本地数据、注入配置与密钥"
               >
                 {cleanupBusy ? '清理中…' : '清理本地数据'}
               </button>
