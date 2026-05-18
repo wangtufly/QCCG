@@ -310,8 +310,10 @@ func (a *App) GetAccountQuota(accountID string) (*account.QuotaInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get token: %w", err)
 	}
-	// PAT 需要先换取 securityOauthToken 才能调用 Qoder OpenAPI
-	if !strings.HasPrefix(token, "dt-") {
+	deviceToken, _ := parseOAuthSecret(token)
+	if strings.HasPrefix(deviceToken, "dt-") {
+		token = deviceToken
+	} else {
 		jt, err := exchangeJobToken(token, newUUID(), newBase64Token(), newHexToken(18))
 		if err != nil {
 			return nil, fmt.Errorf("exchange token: %w", err)

@@ -18,6 +18,42 @@ import (
 //go:embed baseprompt.json
 var basePromptRaw []byte
 
+func qoderChatStreamURL() string {
+	return "https://api1.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1"
+}
+
+func qoderModelListURL() string {
+	return "https://api2.qoder.sh/algo/api/v2/model/list?Encode=1"
+}
+
+func parseOAuthSecret(secret string) (deviceToken, refreshToken string) {
+	secret = strings.TrimSpace(secret)
+	if secret == "" {
+		return "", ""
+	}
+	if strings.HasPrefix(secret, "dt-") || strings.HasPrefix(secret, "drt-") {
+		return secret, ""
+	}
+	var payload struct {
+		DeviceToken  string `json:"device_token"`
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.Unmarshal([]byte(secret), &payload); err != nil {
+		return secret, ""
+	}
+	return payload.DeviceToken, payload.RefreshToken
+}
+
+func resolveOAuthUserID(userInfo map[string]interface{}) string {
+	if id := strVal(userInfo, "id"); id != "" {
+		return id
+	}
+	if id := strVal(userInfo, "userId"); id != "" {
+		return id
+	}
+	return strVal(userInfo, "uid")
+}
+
 func fetchUserInfoWithToken(token string) (map[string]interface{}, error) {
 	req, _ := http.NewRequest("GET", "https://openapi.qoder.sh/api/v1/userinfo", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -31,6 +67,8 @@ func fetchUserInfoWithToken(token string) (map[string]interface{}, error) {
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, err
 	}
+	// DEBUG: dump raw userinfo to understand actual response structure
+	logger.Info("userinfo raw (%d bytes): %s", len(raw), string(raw))
 	return result, nil
 }
 
@@ -54,20 +92,23 @@ func newBridge(pat string) (*bridge, error) {
 	var identity authIdentity
 	var name, id string
 
-	if strings.HasPrefix(pat, "dt-") {
-		userInfo, err := fetchUserInfoWithToken(pat)
+	deviceToken, refreshToken := parseOAuthSecret(pat)
+	if strings.HasPrefix(deviceToken, "dt-") {
+		userInfo, err := fetchUserInfoWithToken(deviceToken)
 		if err != nil {
 			return nil, fmt.Errorf("fetch user info: %w", err)
 		}
 		name = strVal(userInfo, "name")
-		id = strVal(userInfo, "userId")
+		id = resolveOAuthUserID(userInfo)
 		identity = authIdentity{
 			Name:               name,
 			Aid:                id,
 			Uid:                id,
+			OrganizationId:     strVal(userInfo, "organization_id"),
+			OrganizationName:   strVal(userInfo, "organization_name"),
 			UserType:           strValDefault(userInfo, "userType", "personal_standard"),
-			SecurityOauthToken: pat,
-			RefreshToken:       "",
+			SecurityOauthToken: deviceToken,
+			RefreshToken:       refreshToken,
 		}
 	} else {
 		jt, err := exchangeJobToken(pat, mid, mtoken, mtype)
@@ -124,7 +165,7 @@ type QoderModel struct {
 // listAvailableModels 通过 cosy 签名调用 /algo/api/v2/model/list 拉取上游模型清单。
 // 返回顶层 assistant 数组中 enable=true 的模型，按 is_default desc + display_name asc 排序。
 func (b *bridge) listAvailableModels() ([]QoderModel, error) {
-	const modelListURL = "https://api3.qoder.sh/algo/api/v2/model/list"
+	const modelListURL = "https://api2.qoder.sh/algo/api/v2/model/list?Encode=1"
 	resp, err := b.client.callGet(modelListURL)
 	if err != nil {
 		return nil, err
@@ -243,8 +284,7 @@ func (b *bridge) callQoder(ctx context.Context, agent string, messages []interfa
 		}
 	}
 
-	qurl := "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation" +
-		"?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1"
+	qurl := qoderChatStreamURL()
 	extra := map[string]string{
 		"x-model-key":    model,
 		"x-model-source": mcSource,

@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+const cosyVersion = "0.2.17"
+
 const serverPubKeyPEM = `-----BEGIN PUBLIC KEY-----
 MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDA8iMH5c02LilrsERw9t6Pv5Nc
 4k6Pz1EaDicBMpdpxKduSZu5OANqUq8er4GM95omAGIOPOh+Nx0spthYA2BqGz+l
@@ -85,7 +87,7 @@ func signRequest(payloadB64, cosyKey, cosyDate, body, pathWithoutAlgo string) st
 
 func buildPayloadB64(info string) (string, error) {
 	m := map[string]string{
-		"cosyVersion": "0.1.43",
+		"cosyVersion": cosyVersion,
 		"ideVersion":  "",
 		"info":        info,
 		"requestId":   newUUID(),

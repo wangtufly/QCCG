@@ -109,12 +109,12 @@ func WaitLogin(loginID string) (*Account, error) {
 			logger.Info("OAuth: Cancelled")
 			return nil, fmt.Errorf("oauth login cancelled")
 		case <-ticker.C:
-			token, err := pollToken(p.nonce, p.verifier)
+			deviceToken, refreshToken, err := pollToken(p.nonce, p.verifier)
 			if err != nil {
 				continue
 			}
 			logger.Info("OAuth: Got token, building account")
-			acct, err := buildAccountFromToken(token)
+			acct, err := buildAccountFromToken(deviceToken, refreshToken)
 			if err != nil {
 				logger.Error("OAuth: Build account error: %v", err)
 				return nil, err
@@ -139,7 +139,7 @@ func CancelLogin(loginID string) {
 
 // pollToken 轮询 deviceToken/poll 端点
 // 返回 device token (dt-xxx)，用于后续 API 调用
-func pollToken(nonce, verifier string) (string, error) {
+func pollToken(nonce, verifier string) (string, string, error) {
 	// 使用 GET 请求 + query 参数（参考 cockpit-tools）
 	reqURL := fmt.Sprintf("%s?nonce=%s&verifier=%s&challenge_method=S256",
 		pollEndpoint,
@@ -151,7 +151,7 @@ func pollToken(nonce, verifier string) (string, error) {
 	resp, err := http.Get(reqURL)
 	if err != nil {
 		logger.Error("OAuth: Poll error: %v", err)
-		return "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 
@@ -160,35 +160,35 @@ func pollToken(nonce, verifier string) (string, error) {
 
 	// 404 表示还没授权，继续等待
 	if resp.StatusCode == 404 {
-		return "", fmt.Errorf("not authorized yet")
+		return "", "", fmt.Errorf("not authorized yet")
 	}
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("poll: HTTP %d", resp.StatusCode)
+		return "", "", fmt.Errorf("poll: HTTP %d", resp.StatusCode)
 	}
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(raw, &result); err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	// 同时返回 device token 和 refresh token
 	deviceToken, _ := result["token"].(string)
 	refreshToken, _ := result["refresh_token"].(string)
 
-	logger.Info("OAuth: Got device token: %s, refresh token: %s",
-		deviceToken[:10]+"...", refreshToken[:10]+"...")
-
-	// 返回 device token（用于直接调用 API）
 	if deviceToken == "" {
-		return "", fmt.Errorf("no device token in response")
+		return "", "", fmt.Errorf("no device token in response")
 	}
-	return deviceToken, nil
+	if refreshToken != "" {
+		logger.Info("OAuth: Got device token and refresh token")
+	} else {
+		logger.Info("OAuth: Got device token")
+	}
+	return deviceToken, refreshToken, nil
 }
 
 // buildAccountFromToken 使用 device token 构建账号信息
 // device token 可以直接作为 Bearer token 调用 Qoder API
-func buildAccountFromToken(deviceToken string) (*Account, error) {
+func buildAccountFromToken(deviceToken, refreshToken string) (*Account, error) {
 	// 使用 device token 直接调用 API
 	// device token 可以作为 Bearer token 使用
 	info, err := fetchUserInfo(deviceToken)
@@ -213,8 +213,14 @@ func buildAccountFromToken(deviceToken string) (*Account, error) {
 		Tags:      []string{},
 		CreatedAt: now,
 	}
-	// 保存 device token（用于后续 API 调用）
-	if err := SaveSecret(id, deviceToken); err != nil {
+	secretPayload, err := json.Marshal(map[string]string{
+		"device_token":  deviceToken,
+		"refresh_token": refreshToken,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := SaveSecret(id, string(secretPayload)); err != nil {
 		return nil, err
 	}
 	return acct, nil
