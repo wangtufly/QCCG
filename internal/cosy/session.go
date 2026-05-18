@@ -1,4 +1,4 @@
-package main
+package cosy
 
 import (
 	"crypto/aes"
@@ -14,16 +14,16 @@ import (
 	"time"
 )
 
-const cosyVersion = "0.2.17"
+const Version = "0.2.17"
 
-const serverPubKeyPEM = `-----BEGIN PUBLIC KEY-----
+const ServerPubKeyPEM = `-----BEGIN PUBLIC KEY-----
 MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDA8iMH5c02LilrsERw9t6Pv5Nc
 4k6Pz1EaDicBMpdpxKduSZu5OANqUq8er4GM95omAGIOPOh+Nx0spthYA2BqGz+l
 6HRkPJ7S236FZz73In/KVuLnwI8JJ2CbuJap8kvheCCZpmAWpb/cPx/3Vr/J6I17
 XcW+ML9FoCI6AOvOzwIDAQAB
 -----END PUBLIC KEY-----`
 
-type authIdentity struct {
+type AuthIdentity struct {
 	Name               string
 	Aid                string
 	Uid                string
@@ -35,22 +35,21 @@ type authIdentity struct {
 	RefreshToken       string
 }
 
-type sessionContext struct {
+type SessionContext struct {
 	TempKey      []byte
 	CosyKey      string
 	Info         string
-	Identity     authIdentity
+	Identity     AuthIdentity
 	MachineId    string
 	MachineToken string
 	MachineType  string
 }
 
-func newSession(id authIdentity, machineId, machineToken, machineType string) (*sessionContext, error) {
+func NewSession(id AuthIdentity, machineId, machineToken, machineType string) (*SessionContext, error) {
 	raw := make([]byte, 16)
 	if _, err := rand.Read(raw); err != nil {
 		return nil, err
 	}
-	// use hex-like 16 ASCII bytes as temp key (matches Java uuid-hex substr logic)
 	tempKey := []byte(fmt.Sprintf("%x", raw)[:16])
 
 	cosyKeyBytes, err := rsaEncrypt(tempKey)
@@ -69,7 +68,7 @@ func newSession(id authIdentity, machineId, machineToken, machineType string) (*
 	}
 	info := base64.StdEncoding.EncodeToString(encPayload)
 
-	return &sessionContext{
+	return &SessionContext{
 		TempKey:      tempKey,
 		CosyKey:      cosyKey,
 		Info:         info,
@@ -80,17 +79,17 @@ func newSession(id authIdentity, machineId, machineToken, machineType string) (*
 	}, nil
 }
 
-func signRequest(payloadB64, cosyKey, cosyDate, body, pathWithoutAlgo string) string {
+func SignRequest(payloadB64, cosyKey, cosyDate, body, pathWithoutAlgo string) string {
 	s := payloadB64 + "\n" + cosyKey + "\n" + cosyDate + "\n" + body + "\n" + pathWithoutAlgo
-	return md5Hex(s)
+	return Md5Hex(s)
 }
 
-func buildPayloadB64(info string) (string, error) {
+func BuildPayloadB64(info string) (string, error) {
 	m := map[string]string{
-		"cosyVersion": cosyVersion,
+		"cosyVersion": Version,
 		"ideVersion":  "",
 		"info":        info,
-		"requestId":   newUUID(),
+		"requestId":   NewUUID(),
 		"version":     "v1",
 	}
 	data, err := json.Marshal(m)
@@ -100,11 +99,11 @@ func buildPayloadB64(info string) (string, error) {
 	return base64.StdEncoding.EncodeToString(data), nil
 }
 
-func composeBearer(payloadB64, sig string) string {
+func ComposeBearer(payloadB64, sig string) string {
 	return "Bearer COSY." + payloadB64 + "." + sig
 }
 
-func authPayloadJSON(id authIdentity) ([]byte, error) {
+func authPayloadJSON(id AuthIdentity) ([]byte, error) {
 	m := map[string]string{
 		"name":                 id.Name,
 		"aid":                  id.Aid,
@@ -120,7 +119,7 @@ func authPayloadJSON(id authIdentity) ([]byte, error) {
 }
 
 func rsaEncrypt(plaintext []byte) ([]byte, error) {
-	pemData := strings.ReplaceAll(serverPubKeyPEM, "\r", "")
+	pemData := strings.ReplaceAll(ServerPubKeyPEM, "\r", "")
 	block, _ := pem.Decode([]byte(pemData))
 	if block == nil {
 		return nil, fmt.Errorf("failed to decode PEM")
@@ -141,7 +140,6 @@ func aesEncrypt(plain, key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// PKCS5/PKCS7 padding
 	bs := block.BlockSize()
 	pad := bs - len(plain)%bs
 	padded := make([]byte, len(plain)+pad)
@@ -150,44 +148,47 @@ func aesEncrypt(plain, key []byte) ([]byte, error) {
 		padded[i] = byte(pad)
 	}
 	out := make([]byte, len(padded))
-	iv := key[:bs] // same as Java: IvParameterSpec(key)
+	iv := key[:bs]
 	mode := cipher.NewCBCEncrypter(block, iv)
 	mode.CryptBlocks(out, padded)
 	return out, nil
 }
 
-func newUUID() string {
+func NewUUID() string {
 	b := make([]byte, 16)
 	rand.Read(b)
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
-func newRequestId() string {
+func NewRequestID() string {
 	b := make([]byte, 16)
 	rand.Read(b)
 	return fmt.Sprintf("%x", b)[:24]
 }
 
-// newBase64Token mimics Java: base64url(uuid+uuid substring of 50 chars)
-func newBase64Token() string {
-	u1 := newUUID()
-	u2 := newUUID()
+func NewBase64Token() string {
+	u1 := NewUUID()
+	u2 := NewUUID()
 	raw := (u1 + u2)[:50]
 	return base64.RawURLEncoding.EncodeToString([]byte(raw))
 }
 
-// newHexToken returns a random hex string of given length
-func newHexToken(n int) string {
+func NewHexToken(n int) string {
 	b := make([]byte, (n+1)/2)
 	rand.Read(b)
 	return fmt.Sprintf("%x", b)[:n]
 }
 
-func unixSec() int64 {
+func UnixSec() int64 {
 	return time.Now().Unix()
 }
 
-func unixMs() int64 {
+func UnixMs() int64 {
 	return time.Now().UnixMilli()
+}
+
+func FloatVal(m map[string]interface{}, key string) float64 {
+	v, _ := m[key].(float64)
+	return v
 }

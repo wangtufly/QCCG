@@ -1,6 +1,7 @@
-package main
+package bridge
 
 import (
+	"qccg/internal/cosy"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,14 +10,11 @@ import (
 	"sort"
 	"strings"
 
-	_ "embed"
 
 	"qccg/account"
 	"qccg/logger"
 )
 
-//go:embed baseprompt.json
-var basePromptRaw []byte
 
 func qoderChatStreamURL() string {
 	return "https://api1.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1"
@@ -26,7 +24,7 @@ func qoderModelListURL() string {
 	return "https://api2.qoder.sh/algo/api/v2/model/list?Encode=1"
 }
 
-func parseOAuthSecret(secret string) (deviceToken, refreshToken string) {
+func ParseOAuthSecret(secret string) (deviceToken, refreshToken string) {
 	secret = strings.TrimSpace(secret)
 	if secret == "" {
 		return "", ""
@@ -44,17 +42,17 @@ func parseOAuthSecret(secret string) (deviceToken, refreshToken string) {
 	return payload.DeviceToken, payload.RefreshToken
 }
 
-func resolveOAuthUserID(userInfo map[string]interface{}) string {
-	if id := strVal(userInfo, "id"); id != "" {
+func ResolveOAuthUserID(userInfo map[string]interface{}) string {
+	if id := StrVal(userInfo, "id"); id != "" {
 		return id
 	}
-	if id := strVal(userInfo, "userId"); id != "" {
+	if id := StrVal(userInfo, "userId"); id != "" {
 		return id
 	}
-	return strVal(userInfo, "uid")
+	return StrVal(userInfo, "uid")
 }
 
-func fetchUserInfoWithToken(token string) (map[string]interface{}, error) {
+func FetchUserInfoWithToken(token string) (map[string]interface{}, error) {
 	req, _ := http.NewRequest("GET", "https://openapi.qoder.sh/api/v1/userinfo", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := http.DefaultClient.Do(req)
@@ -72,9 +70,9 @@ func fetchUserInfoWithToken(token string) (map[string]interface{}, error) {
 	return result, nil
 }
 
-type bridge struct {
-	sess         *sessionContext
-	client       *bearerClient
+type Bridge struct {
+	sess         *cosy.SessionContext
+	client       *BearerClient
 	templateBase map[string]interface{}
 }
 
@@ -82,71 +80,59 @@ type bridge struct {
 // 支持两种认证方式：
 // 1. OAuth device token (dt-xxx): 直接使用，调用 /api/v1/userinfo 获取用户信息
 // 2. Personal Access Token (PAT): 调用 exchangeJobToken 转换为 session token
-func newBridge(pat string) (*bridge, error) {
-	mid := newUUID()
-	mtoken := newBase64Token()
-	mtype := newHexToken(18)
+func NewBridge(pat string, templateBase map[string]interface{}) (*Bridge, error) {
+	mid := cosy.NewUUID()
+	mtoken := cosy.NewBase64Token()
+	mtype := cosy.NewHexToken(18)
 
 	logger.Info("Bridge using token: %s (prefix: %s)", pat[:10]+"...", pat[:4])
 
-	var identity authIdentity
+	var identity cosy.AuthIdentity
 	var name, id string
 
-	deviceToken, refreshToken := parseOAuthSecret(pat)
+	deviceToken, refreshToken := ParseOAuthSecret(pat)
 	if strings.HasPrefix(deviceToken, "dt-") {
-		userInfo, err := fetchUserInfoWithToken(deviceToken)
+		userInfo, err := FetchUserInfoWithToken(deviceToken)
 		if err != nil {
 			return nil, fmt.Errorf("fetch user info: %w", err)
 		}
-		name = strVal(userInfo, "name")
-		id = resolveOAuthUserID(userInfo)
-		identity = authIdentity{
+		name = StrVal(userInfo, "name")
+		id = ResolveOAuthUserID(userInfo)
+		identity = cosy.AuthIdentity{
 			Name:               name,
 			Aid:                id,
 			Uid:                id,
-			OrganizationId:     strVal(userInfo, "organization_id"),
-			OrganizationName:   strVal(userInfo, "organization_name"),
-			UserType:           strValDefault(userInfo, "userType", "personal_standard"),
+			OrganizationId:     StrVal(userInfo, "organization_id"),
+			OrganizationName:   StrVal(userInfo, "organization_name"),
+			UserType:           StrValDefault(userInfo, "userType", "personal_standard"),
 			SecurityOauthToken: deviceToken,
 			RefreshToken:       refreshToken,
 		}
 	} else {
-		jt, err := exchangeJobToken(pat, mid, mtoken, mtype)
+		jt, err := cosy.ExchangeJobToken(pat, mid, mtoken, mtype)
 		if err != nil {
 			return nil, fmt.Errorf("exchangeJobToken: %w", err)
 		}
-		name = strVal(jt, "name")
-		id = strVal(jt, "id")
-		identity = authIdentity{
+		name = StrVal(jt, "name")
+		id = StrVal(jt, "id")
+		identity = cosy.AuthIdentity{
 			Name:               name,
 			Aid:                id,
 			Uid:                id,
-			UserType:           strValDefault(jt, "userType", "personal_standard"),
-			SecurityOauthToken: strVal(jt, "securityOauthToken"),
-			RefreshToken:       strVal(jt, "refreshToken"),
+			UserType:           StrValDefault(jt, "userType", "personal_standard"),
+			SecurityOauthToken: StrVal(jt, "securityOauthToken"),
+			RefreshToken:       StrVal(jt, "refreshToken"),
 		}
 	}
 
 	logger.Info("Bridge session for %s (%s)", name, id)
-	sess, err := newSession(identity, mid, mtoken, mtype)
+	sess, err := cosy.NewSession(identity, mid, mtoken, mtype)
 	if err != nil {
 		return nil, err
 	}
-	client := newBearerClient(sess)
+	client := NewBearerClient(sess)
 
-	// prepare template: replace placeholders
-	tmpl := string(basePromptRaw)
-	for _, ukey := range []string{"{UUID1}", "{UUID2}", "{UUID3}", "{UUID4}", "{UUID5}"} {
-		tmpl = strings.ReplaceAll(tmpl, ukey, newUUID())
-	}
-	tmpl = strings.ReplaceAll(tmpl, "{TIME1}", fmt.Sprintf("%d", unixMs()))
-
-	var templateBase map[string]interface{}
-	if err := json.Unmarshal([]byte(tmpl), &templateBase); err != nil {
-		return nil, fmt.Errorf("parse baseprompt: %w", err)
-	}
-
-	return &bridge{
+	return &Bridge{
 		sess:         sess,
 		client:       client,
 		templateBase: templateBase,
@@ -164,7 +150,7 @@ type QoderModel struct {
 
 // listAvailableModels 通过 cosy 签名调用 /algo/api/v2/model/list 拉取上游模型清单。
 // 返回顶层 assistant 数组中 enable=true 的模型，按 is_default desc + display_name asc 排序。
-func (b *bridge) listAvailableModels() ([]QoderModel, error) {
+func (b *Bridge) ListAvailableModels() ([]QoderModel, error) {
 	const modelListURL = "https://api2.qoder.sh/algo/api/v2/model/list?Encode=1"
 	resp, err := b.client.callGet(modelListURL)
 	if err != nil {
@@ -190,39 +176,39 @@ func parseQoderModels(resp map[string]interface{}) []QoderModel {
 			continue
 		}
 		out = append(out, QoderModel{
-			Key:            strVal(m, "key"),
-			DisplayName:    strVal(m, "display_name"),
+			Key:            StrVal(m, "key"),
+			DisplayName:    StrVal(m, "display_name"),
 			Enable:         enable,
 			IsDefault:      func() bool { v, _ := m["is_default"].(bool); return v }(),
-			MaxInputTokens: int(floatVal(m, "max_input_tokens")),
+			MaxInputTokens: int(cosy.FloatVal(m, "max_input_tokens")),
 		})
 	}
 	return out
 }
 
 // deepCopyMap does a JSON round-trip deep copy
-func deepCopyMap(m map[string]interface{}) map[string]interface{} {
+func DeepCopyMap(m map[string]interface{}) map[string]interface{} {
 	data, _ := json.Marshal(m)
 	var out map[string]interface{}
 	json.Unmarshal(data, &out)
 	return out
 }
 
-func (b *bridge) callQoder(ctx context.Context, agent string, messages []interface{}, model string, tools interface{}, onDelta func(bridgeDelta)) error {
+func (b *Bridge) CallQoder(ctx context.Context, agent string, messages []interface{}, model string, tools interface{}, onDelta func(Delta)) error {
 	// 将客户端模型名（claude-sonnet-4-6 等）映射成 Qoder 上游内部 model.key（auto/ultimate/performance/lite/efficient）。
 	// 上游对未知 key 会走兜底返回内容，但不会把这次调用计入 quota，这是「请求成功但 dashboard 无用量」的根因。
 	originalModel := model
-	model = mapModel(agent, model)
+	model = MapModel(agent, model)
 	if model != originalModel {
 		logger.Debug("mapModel %s/%s -> %s", agent, originalModel, model)
 	}
-	body := deepCopyMap(b.templateBase)
+	body := DeepCopyMap(b.templateBase)
 
-	nid := newUUID()
+	nid := cosy.NewUUID()
 	body["request_id"] = nid
 	body["chat_record_id"] = nid
-	body["request_set_id"] = newUUID()
-	body["session_id"] = newUUID()
+	body["request_set_id"] = cosy.NewUUID()
+	body["session_id"] = cosy.NewUUID()
 	body["stream"] = true
 	body["aliyun_user_type"] = b.sess.Identity.UserType
 
@@ -234,7 +220,7 @@ func (b *bridge) callQoder(ctx context.Context, agent string, messages []interfa
 	prompt := ""
 	for i := len(messages) - 1; i >= 0; i-- {
 		if mm, ok := messages[i].(map[string]interface{}); ok && mm["role"] == "user" {
-			prompt = normalizeMessageContent(mm)
+			prompt = NormalizeMessageContent(mm)
 			if prompt == "" {
 				if contents, ok := mm["contents"].([]interface{}); ok {
 					for _, block := range contents {
@@ -252,8 +238,8 @@ func (b *bridge) callQoder(ctx context.Context, agent string, messages []interfa
 	}
 
 	if biz, ok := body["business"].(map[string]interface{}); ok {
-		biz["id"] = newUUID()
-		biz["begin_at"] = unixMs()
+		biz["id"] = cosy.NewUUID()
+		biz["begin_at"] = cosy.UnixMs()
 		if len(prompt) > 30 {
 			biz["name"] = prompt[:30]
 		} else {
@@ -306,7 +292,7 @@ func (b *bridge) callQoder(ctx context.Context, agent string, messages []interfa
 		if dataPayload == "[DONE]" {
 			return
 		}
-		delta := extractDelta(dataPayload)
+		delta := ExtractDelta(dataPayload)
 		if delta.Err != nil {
 			upstreamErr = delta.Err
 			return
@@ -330,7 +316,7 @@ func (b *bridge) callQoder(ctx context.Context, agent string, messages []interfa
 //  2. 长度阈值：>32 才脱敏（避免把短角色名 "user" 也替换掉）
 //  3. 按字段名递归：content/text/system/input/instructions/prompt/description
 //  4. 失败时退回原始内容（脱敏只是日志辅助，不能影响主流程）
-func redactRequestBodyJSON(raw []byte) string {
+func RedactRequestBodyJSON(raw []byte) string {
 	var v interface{}
 	if err := json.Unmarshal(raw, &v); err != nil {
 		return string(raw)
@@ -379,14 +365,14 @@ func redactValue(v interface{}, parentField string) {
 	}
 }
 
-func strVal(m map[string]interface{}, key string) string {
+func StrVal(m map[string]interface{}, key string) string {
 	if v, ok := m[key].(string); ok {
 		return v
 	}
 	return ""
 }
 
-func strValDefault(m map[string]interface{}, key, def string) string {
+func StrValDefault(m map[string]interface{}, key, def string) string {
 	if v, ok := m[key].(string); ok && v != "" {
 		return v
 	}
@@ -395,7 +381,7 @@ func strValDefault(m map[string]interface{}, key, def string) string {
 
 // inferAgent 根据模型名启发式推断 agent 类型，用于 chat/completions 这种多 agent 共用 endpoint
 // 时选择正确的映射桶。模型名命中关键字按 gemini > claude > 默认 codex。
-func inferAgent(model string) string {
+func InferAgent(model string) string {
 	low := strings.ToLower(model)
 	switch {
 	case strings.Contains(low, "gemini"):
@@ -437,7 +423,7 @@ var defaultModelMapping = map[string]string{
 //
 // 双向 substring 含义：source 包含 model（短关键字匹配长模型名，如 "sonnet" → "claude-sonnet-4-6"）
 // 或 model 包含 source（长别名匹配短模型名，反向也能命中）。
-func mapModel(agent, model string) string {
+func MapModel(agent, model string) string {
 	if model == "" {
 		return model
 	}

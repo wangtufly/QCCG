@@ -1,4 +1,4 @@
-package main
+package bridge
 
 import "testing"
 
@@ -9,7 +9,7 @@ func TestBuildQoderMessages_SingleUser(t *testing.T) {
 	templateMsgs := []interface{}{
 		map[string]interface{}{"role": "system", "content": "You are helpful."},
 	}
-	result := buildQoderMessages(templateMsgs, incoming, "hello", false)
+	result := BuildQoderMessages(templateMsgs, incoming, "hello", false)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(result))
 	}
@@ -38,7 +38,7 @@ func TestBuildQoderMessages_WithToolCalls(t *testing.T) {
 		map[string]interface{}{"role": "tool", "tool_call_id": "call_1", "content": "file content"},
 		map[string]interface{}{"role": "user", "content": "now fix it"},
 	}
-	result := buildQoderMessages(nil, incoming, "now fix it", true)
+	result := BuildQoderMessages(nil, incoming, "now fix it", true)
 	if len(result) < 4 {
 		t.Fatalf("expected >= 4 messages, got %d", len(result))
 	}
@@ -52,7 +52,7 @@ func TestBuildQoderMessages_IncomingSystemOverridesTemplate(t *testing.T) {
 	templateMsgs := []interface{}{
 		map[string]interface{}{"role": "system", "content": "Template system"},
 	}
-	result := buildQoderMessages(templateMsgs, incoming, "hi", false)
+	result := BuildQoderMessages(templateMsgs, incoming, "hi", false)
 	// Should NOT include template system when incoming has its own
 	for _, m := range result {
 		mm := m.(map[string]interface{})
@@ -64,7 +64,7 @@ func TestBuildQoderMessages_IncomingSystemOverridesTemplate(t *testing.T) {
 
 func TestNormalizeMessageContent_String(t *testing.T) {
 	msg := map[string]interface{}{"content": "hello"}
-	if got := normalizeMessageContent(msg); got != "hello" {
+	if got := NormalizeMessageContent(msg); got != "hello" {
 		t.Fatalf("expected 'hello', got '%s'", got)
 	}
 }
@@ -76,7 +76,7 @@ func TestNormalizeMessageContent_Array(t *testing.T) {
 			map[string]interface{}{"type": "text", "text": "part2"},
 		},
 	}
-	got := normalizeMessageContent(msg)
+	got := NormalizeMessageContent(msg)
 	if got != "part1\n\npart2" {
 		t.Fatalf("expected 'part1\\n\\npart2', got '%s'", got)
 	}
@@ -152,7 +152,7 @@ func TestLookupMapping_SkipsEmptyEntries(t *testing.T) {
 
 func TestMapModel_DefaultMappingFallback(t *testing.T) {
 	// 直接验证内置 defaultModelMapping 中的关键字均能通过 lookupMapping 命中长模型名。
-	// 不调 mapModel() 是为了避开 ~/.qccg/settings.json 可能存在的用户覆盖，
+	// 不调 MapModel() 是为了避开 ~/.qccg/settings.json 可能存在的用户覆盖，
 	// 让单测在任意环境（含已配置过映射的开发机）都稳定通过。
 	cases := map[string]string{
 		// Claude 三档
@@ -189,13 +189,13 @@ func TestMapModel_DefaultMappingFallback(t *testing.T) {
 
 func TestMapModel_ToLowerFallback(t *testing.T) {
 	// 完全没命中时兜底到合法 key，避免将未知模型名直传上游导致计费/行为异常。
-	if got := mapModel("", "ZZZNotARealModel"); got != "performance" {
+	if got := MapModel("", "ZZZNotARealModel"); got != "performance" {
 		t.Fatalf("expected performance fallback, got '%s'", got)
 	}
 }
 
 func TestMapModel_EmptyPassthrough(t *testing.T) {
-	if got := mapModel("", ""); got != "" {
+	if got := MapModel("", ""); got != "" {
 		t.Fatalf("expected empty passthrough, got '%s'", got)
 	}
 }

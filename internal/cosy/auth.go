@@ -1,4 +1,4 @@
-package main
+package cosy
 
 import (
 	"encoding/json"
@@ -9,15 +9,12 @@ import (
 	"time"
 )
 
-// exchangeJobToken 将 PAT 或 refresh token 转换为 job token
+// ExchangeJobToken 将 PAT 或 refresh token 转换为 job token
 // 仅用于 PAT 认证方式，OAuth device token 不需要调用此函数
-func exchangeJobToken(token, machineId, machineToken, machineType string) (map[string]interface{}, error) {
-	date := currentDate()
-	sig := sign(date)
+func ExchangeJobToken(token, machineId, machineToken, machineType string) (map[string]interface{}, error) {
+	date := CurrentDate()
+	sig := SignLegacy(date)
 
-	// 判断 token 类型：
-	// - drt- 开头是 refresh token
-	// - 其他是 personal token (PAT)
 	var personalToken, refreshToken string
 	if strings.HasPrefix(token, "drt-") {
 		refreshToken = token
@@ -41,7 +38,7 @@ func exchangeJobToken(token, machineId, machineToken, machineType string) (map[s
 		"encodeVersion": "1",
 	}
 	plain, _ := json.Marshal(outer)
-	body, err := qoderEncode(plain)
+	body, err := Encode(plain)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +50,7 @@ func exchangeJobToken(token, machineId, machineToken, machineType string) (map[s
 	req.Header.Set("cosy-machinetoken", machineToken)
 	req.Header.Set("cosy-machinetype", machineType)
 	req.Header.Set("login-version", "v2")
-	req.Header.Set("appcode", appCode)
+	req.Header.Set("appcode", AppCode)
 	req.Header.Set("accept", "application/json")
 	req.Header.Set("accept-encoding", "identity")
 	req.Header.Set("cosy-version", "0.1.43")

@@ -1,6 +1,7 @@
-package main
+package bridge
 
 import (
+	"qccg/internal/cosy"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,7 +12,7 @@ import (
 	"qccg/logger"
 )
 
-func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
+func (b *Bridge) HandleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 	if r.Method != "POST" {
 		w.WriteHeader(405)
@@ -19,26 +20,26 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeClaudeErr(w, err)
+		WriteClaudeErr(w, err)
 		return
 	}
 
-	reqID := newUUID()[:8]
+	reqID := cosy.NewUUID()[:8]
 	logger.Info("[Claude][%s] 收到请求 %s %s body_size=%d", reqID, r.Method, r.URL.Path, len(body))
-	logger.Debug("[Claude][%s] 请求体（敏感字段已脱敏）: %s", reqID, redactRequestBodyJSON(body))
+	logger.Debug("[Claude][%s] 请求体（敏感字段已脱敏）: %s", reqID, RedactRequestBodyJSON(body))
 
 	var req map[string]interface{}
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeClaudeErr(w, err)
+		WriteClaudeErr(w, err)
 		return
 	}
 	stream, _ := req["stream"].(bool)
-	model := strValDefault(req, "model", "lite")
+	model := StrValDefault(req, "model", "lite")
 	incomingMsgs, _ := req["messages"].([]interface{})
 
 	// Claude format: tools use name+input_schema directly
 	// Convert to OpenAI-style for Qoder upstream
-	tools := convertClaudeToolsToOpenAI(req["tools"])
+	tools := ConvertClaudeToolsToOpenAI(req["tools"])
 	toolsEnabled := tools != nil
 
 	// If there's a system field, prepend it as a system message
@@ -65,12 +66,12 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	prompt := extractLatestUserPrompt(incomingMsgs)
-	messages := buildQoderMessages(b.templateMessages(), incomingMsgs, prompt, toolsEnabled)
+	prompt := ExtractLatestUserPrompt(incomingMsgs)
+	messages := BuildQoderMessages(b.templateMessages(), incomingMsgs, prompt, toolsEnabled)
 
 	logger.Info("[Claude][%s] model=%s stream=%v tools=%v msgs=%d", reqID, model, stream, toolsEnabled, len(incomingMsgs))
 
-	msgId := "msg_" + newRequestId()
+	msgId := "msg_" + cosy.NewRequestID()
 	ctx := r.Context()
 
 	if stream {
@@ -109,7 +110,7 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 		streamContentLen := 0
 		var totalInputTokens, totalOutputTokens int
 
-		err = b.callQoder(ctx, "claude", messages, model, tools, func(d bridgeDelta) {
+		err = b.CallQoder(ctx, "claude", messages, model, tools, func(d Delta) {
 			if d.Err != nil {
 				// 上游业务错误，记录后让 callQoder 返回的 err 处理
 				return
@@ -126,7 +127,7 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 				})
 			}
 			if d.ToolCalls != nil {
-				mergeToolCallChunks(toolCallMerged, d.ToolCalls)
+				MergeToolCallChunks(toolCallMerged, d.ToolCalls)
 			}
 		})
 		if err != nil {
@@ -141,13 +142,13 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 		writeSse("content_block_stop", map[string]interface{}{"type": "content_block_stop", "index": contentBlockIndex})
 
 		// If there were tool calls, emit them as tool_use blocks
-		mergedTools := sortedToolCalls(toolCallMerged)
+		mergedTools := SortedToolCalls(toolCallMerged)
 		for i, tcMap := range mergedTools {
 			blockIdx := contentBlockIndex + 1 + i
 			fn, _ := tcMap["function"].(map[string]interface{})
 			toolId, _ := tcMap["id"].(string)
 			if toolId == "" {
-				toolId = "toolu_" + newRequestId()
+				toolId = "toolu_" + cosy.NewRequestID()
 			}
 			name, _ := fn["name"].(string)
 			argsStr, _ := fn["arguments"].(string)
@@ -186,7 +187,7 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 		var full strings.Builder
 		var toolCallBuf []interface{}
 		var totalInputTokens, totalOutputTokens int
-		err = b.callQoder(ctx, "claude", messages, model, tools, func(d bridgeDelta) {
+		err = b.CallQoder(ctx, "claude", messages, model, tools, func(d Delta) {
 			if d.Err != nil {
 				return
 			}
@@ -203,7 +204,7 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 		})
 		if err != nil {
 			logger.Error("[Claude][%s] 请求失败: %v (耗时 %dms)", reqID, err, time.Since(startTime).Milliseconds())
-			writeClaudeErr(w, fmt.Errorf("request failed: %w", err))
+			WriteClaudeErr(w, fmt.Errorf("request failed: %w", err))
 			return
 		}
 
@@ -219,7 +220,7 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 			fn, _ := tcMap["function"].(map[string]interface{})
 			toolId, _ := tcMap["id"].(string)
 			if toolId == "" {
-				toolId = "toolu_" + newRequestId()
+				toolId = "toolu_" + cosy.NewRequestID()
 			}
 			name, _ := fn["name"].(string)
 			argsStr, _ := fn["arguments"].(string)
@@ -246,14 +247,14 @@ func (b *bridge) handleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 		}
 		logger.Info("[Claude][%s] 完成 stop=%s content_len=%d tool_calls=%d 耗时=%dms", reqID, stopReason, full.Len(), len(toolCallBuf), time.Since(startTime).Milliseconds())
 		logger.Debug("[Claude][%s] 响应体: %s", reqID, func() string { d, _ := json.Marshal(resp); return string(d) }())
-		writeJSON(w, resp)
+		WriteJSON(w, resp)
 	}
 }
 
 // handleListModels 实现 GET /v1/models，返回 Claude API 格式的模型列表。
 // Claude Code 通过此接口获取 context_window 大小，用于决定何时触发 compact（80% 阈值）。
-func (b *bridge) handleListModels(w http.ResponseWriter, r *http.Request) {
-	models, err := b.listAvailableModels()
+func (b *Bridge) HandleListModels(w http.ResponseWriter, r *http.Request) {
+	models, err := b.ListAvailableModels()
 	if err != nil {
 		logger.Error("[models] listAvailableModels failed: %v, using fallback", err)
 		models = nil
@@ -285,10 +286,10 @@ func (b *bridge) handleListModels(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
-	writeJSON(w, map[string]interface{}{"data": data})
+	WriteJSON(w, map[string]interface{}{"data": data})
 }
 
-func writeClaudeErr(w http.ResponseWriter, err error) {
+func WriteClaudeErr(w http.ResponseWriter, err error) {
 	body, _ := json.Marshal(map[string]interface{}{
 		"type": "error",
 		"error": map[string]interface{}{
@@ -302,7 +303,7 @@ func writeClaudeErr(w http.ResponseWriter, err error) {
 }
 
 // mergeToolCallChunks 将流式 tool_call 增量 chunk 按 index 合并
-func mergeToolCallChunks(merged map[int]map[string]interface{}, chunks []interface{}) {
+func MergeToolCallChunks(merged map[int]map[string]interface{}, chunks []interface{}) {
 	for _, chunk := range chunks {
 		tc, ok := chunk.(map[string]interface{})
 		if !ok {
@@ -341,7 +342,7 @@ func mergeToolCallChunks(merged map[int]map[string]interface{}, chunks []interfa
 }
 
 // sortedToolCalls 按 index 排序返回合并后的 tool calls
-func sortedToolCalls(merged map[int]map[string]interface{}) []map[string]interface{} {
+func SortedToolCalls(merged map[int]map[string]interface{}) []map[string]interface{} {
 	if len(merged) == 0 {
 		return nil
 	}
@@ -360,7 +361,7 @@ func sortedToolCalls(merged map[int]map[string]interface{}) []map[string]interfa
 	return result
 }
 
-func convertClaudeToolsToOpenAI(raw interface{}) interface{} {
+func ConvertClaudeToolsToOpenAI(raw interface{}) interface{} {
 	tools, ok := raw.([]interface{})
 	if !ok || len(tools) == 0 {
 		return nil

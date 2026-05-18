@@ -1,6 +1,7 @@
-package main
+package bridge
 
 import (
+	"qccg/internal/cosy"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,7 +12,7 @@ import (
 	"qccg/logger"
 )
 
-func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
+func (b *Bridge) HandleCodexResponses(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 	if r.Method != "POST" {
 		w.WriteHeader(405)
@@ -19,33 +20,33 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeCodexErr(w, err)
+		WriteCodexErr(w, err)
 		return
 	}
 
-	reqID := newUUID()[:8]
+	reqID := cosy.NewUUID()[:8]
 	logger.Info("[Codex][%s] 收到请求 %s %s body_size=%d", reqID, r.Method, r.URL.Path, len(body))
-	logger.Debug("[Codex][%s] 请求体（敏感字段已脱敏）: %s", reqID, redactRequestBodyJSON(body))
+	logger.Debug("[Codex][%s] 请求体（敏感字段已脱敏）: %s", reqID, RedactRequestBodyJSON(body))
 
 	var req map[string]interface{}
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeCodexErr(w, err)
+		WriteCodexErr(w, err)
 		return
 	}
 	stream, _ := req["stream"].(bool)
-	model := strValDefault(req, "model", "lite")
+	model := StrValDefault(req, "model", "lite")
 	instructions, _ := req["instructions"].(string)
 	tools := req["tools"]
 	toolsEnabled := tools != nil
 
 	// Convert input to messages
-	incomingMsgs := codexInputToMessages(req["input"], instructions)
-	prompt := extractLatestUserPrompt(incomingMsgs)
-	messages := buildQoderMessages(b.templateMessages(), incomingMsgs, prompt, toolsEnabled)
+	incomingMsgs := CodexInputToMessages(req["input"], instructions)
+	prompt := ExtractLatestUserPrompt(incomingMsgs)
+	messages := BuildQoderMessages(b.templateMessages(), incomingMsgs, prompt, toolsEnabled)
 
 	logger.Info("[Codex][%s] model=%s stream=%v tools=%v msgs=%d", reqID, model, stream, toolsEnabled, len(incomingMsgs))
 
-	respId := "resp_" + newRequestId()
+	respId := "resp_" + cosy.NewRequestID()
 	ctx := r.Context()
 
 	if stream {
@@ -71,7 +72,7 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 
-		outputItemId := "msg_" + newRequestId()
+		outputItemId := "msg_" + cosy.NewRequestID()
 		writeEvent("response.output_item.added", map[string]interface{}{
 			"type":         "response.output_item.added",
 			"output_index": 0,
@@ -81,7 +82,7 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 
-		contentPartId := "cp_" + newRequestId()
+		contentPartId := "cp_" + cosy.NewRequestID()
 		writeEvent("response.content_part.added", map[string]interface{}{
 			"type":          "response.content_part.added",
 			"item_id":       outputItemId,
@@ -95,7 +96,7 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 
 		var toolCallBuf []interface{}
 
-		err = b.callQoder(ctx, "codex", messages, model, tools, func(d bridgeDelta) {
+		err = b.CallQoder(ctx, "codex", messages, model, tools, func(d Delta) {
 			if d.Content != "" {
 				writeEvent("response.output_text.delta", map[string]interface{}{
 					"type":          "response.output_text.delta",
@@ -133,12 +134,12 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 			fn, _ := tcMap["function"].(map[string]interface{})
 			callId, _ := tcMap["id"].(string)
 			if callId == "" {
-				callId = "call_" + newRequestId()
+				callId = "call_" + cosy.NewRequestID()
 			}
 			name, _ := fn["name"].(string)
 			args, _ := fn["arguments"].(string)
 
-			fcItemId := "fc_" + newRequestId()
+			fcItemId := "fc_" + cosy.NewRequestID()
 			writeEvent("response.output_item.added", map[string]interface{}{
 				"type":         "response.output_item.added",
 				"output_index": i + 1,
@@ -176,7 +177,7 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 	} else {
 		var full strings.Builder
 		var toolCallBuf []interface{}
-		err = b.callQoder(ctx, "codex", messages, model, tools, func(d bridgeDelta) {
+		err = b.CallQoder(ctx, "codex", messages, model, tools, func(d Delta) {
 			if d.Content != "" {
 				full.WriteString(d.Content)
 			}
@@ -186,7 +187,7 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 		})
 		if err != nil {
 			logger.Error("[Codex][%s] 请求失败: %v (耗时 %dms)", reqID, err, time.Since(startTime).Milliseconds())
-			writeCodexErr(w, fmt.Errorf("request failed: %w", err))
+			WriteCodexErr(w, fmt.Errorf("request failed: %w", err))
 			return
 		}
 
@@ -207,7 +208,7 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 			fn, _ := tcMap["function"].(map[string]interface{})
 			callId, _ := tcMap["id"].(string)
 			if callId == "" {
-				callId = "call_" + newRequestId()
+				callId = "call_" + cosy.NewRequestID()
 			}
 			name, _ := fn["name"].(string)
 			args, _ := fn["arguments"].(string)
@@ -226,11 +227,11 @@ func (b *bridge) handleCodexResponses(w http.ResponseWriter, r *http.Request) {
 		}
 		logger.Info("[Codex][%s] 完成 content_len=%d tool_calls=%d 耗时=%dms", reqID, full.Len(), len(toolCallBuf), time.Since(startTime).Milliseconds())
 		logger.Debug("[Codex][%s] 响应体: %s", reqID, func() string { d, _ := json.Marshal(resp); return string(d) }())
-		writeJSON(w, resp)
+		WriteJSON(w, resp)
 	}
 }
 
-func codexInputToMessages(input interface{}, instructions string) []interface{} {
+func CodexInputToMessages(input interface{}, instructions string) []interface{} {
 	var msgs []interface{}
 
 	if instructions != "" {
@@ -293,7 +294,7 @@ func codexInputToMessages(input interface{}, instructions string) []interface{} 
 	return msgs
 }
 
-func writeCodexErr(w http.ResponseWriter, err error) {
+func WriteCodexErr(w http.ResponseWriter, err error) {
 	body, _ := json.Marshal(map[string]interface{}{
 		"error": map[string]interface{}{"message": err.Error(), "type": "server_error"},
 	})

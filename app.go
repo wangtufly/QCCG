@@ -1,7 +1,10 @@
 package main
 
 import (
+	"qccg/internal/bridge"
+	"qccg/internal/cosy"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -18,7 +21,7 @@ import (
 
 type App struct {
 	ctx         context.Context
-	bridge      *bridge
+	bridge      *bridge.Bridge
 	bridgeSrv   *http.Server
 	bridgeMu    sync.Mutex
 	bridgePort  int
@@ -70,21 +73,21 @@ func (a *App) ListAccounts() []account.Account {
 
 func (a *App) AddAccountByPAT(pat string) (*account.Account, error) {
 	defer a.refreshAppMenu()
-	mid := newUUID()
-	mtoken := newBase64Token()
-	mtype := newHexToken(18)
+	mid := cosy.NewUUID()
+	mtoken := cosy.NewBase64Token()
+	mtype := cosy.NewHexToken(18)
 
-	jt, err := exchangeJobToken(pat, mid, mtoken, mtype)
+	jt, err := cosy.ExchangeJobToken(pat, mid, mtoken, mtype)
 	if err != nil {
 		return nil, fmt.Errorf("验证 PAT 失败: %w", err)
 	}
-	id := account.SanitizeID(strVal(jt, "id") + strVal(jt, "name"))
+	id := account.SanitizeID(bridge.StrVal(jt, "id") + bridge.StrVal(jt, "name"))
 	now := time.Now()
 	acct := &account.Account{
 		ID:        id,
-		Name:      strVal(jt, "name"),
-		Email:     strVal(jt, "email"),
-		UserType:  strValDefault(jt, "userType", "personal_standard"),
+		Name:      bridge.StrVal(jt, "name"),
+		Email:     bridge.StrVal(jt, "email"),
+		UserType:  bridge.StrValDefault(jt, "userType", "personal_standard"),
 		AuthMode:  "pat",
 		APIMode:   "openai",
 		Tags:      []string{},
@@ -214,7 +217,16 @@ func (a *App) startBridgeWithAccount(acct *account.Account) error {
 	}
 	logger.Debug("Got secret for account %s", acct.ID)
 
-	b, err := newBridge(pat)
+	// Parse baseprompt template
+	tmpl := string(basePromptRaw)
+	for _, ukey := range []string{"{UUID1}", "{UUID2}", "{UUID3}", "{UUID4}", "{UUID5}"} {
+		tmpl = strings.ReplaceAll(tmpl, ukey, cosy.NewUUID())
+	}
+	tmpl = strings.ReplaceAll(tmpl, "{TIME1}", fmt.Sprintf("%d", cosy.UnixMs()))
+	var templateBase map[string]interface{}
+	json.Unmarshal([]byte(tmpl), &templateBase)
+
+	b, err := bridge.NewBridge(pat, templateBase)
 	if err != nil {
 		logger.Error("Failed to create bridge: %v", err)
 		return fmt.Errorf("failed to create bridge: %w", err)
@@ -222,10 +234,10 @@ func (a *App) startBridgeWithAccount(acct *account.Account) error {
 	logger.Info("Bridge created successfully")
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/chat/completions", b.handleChatCompletions)
-	mux.HandleFunc("/v1/messages", b.handleClaudeMessages)
-	mux.HandleFunc("/v1/models", b.handleListModels)
-	mux.HandleFunc("/v1/responses", b.handleCodexResponses)
+	mux.HandleFunc("/v1/chat/completions", b.HandleChatCompletions)
+	mux.HandleFunc("/v1/messages", b.HandleClaudeMessages)
+	mux.HandleFunc("/v1/models", b.HandleListModels)
+	mux.HandleFunc("/v1/responses", b.HandleCodexResponses)
 	logger.Info("Bridge: all endpoints registered")
 
 	// 全局请求日志中间件
@@ -310,15 +322,15 @@ func (a *App) GetAccountQuota(accountID string) (*account.QuotaInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get token: %w", err)
 	}
-	deviceToken, _ := parseOAuthSecret(token)
+	deviceToken, _ := bridge.ParseOAuthSecret(token)
 	if strings.HasPrefix(deviceToken, "dt-") {
 		token = deviceToken
 	} else {
-		jt, err := exchangeJobToken(token, newUUID(), newBase64Token(), newHexToken(18))
+		jt, err := cosy.ExchangeJobToken(token, cosy.NewUUID(), cosy.NewBase64Token(), cosy.NewHexToken(18))
 		if err != nil {
 			return nil, fmt.Errorf("exchange token: %w", err)
 		}
-		oauthToken := strVal(jt, "securityOauthToken")
+		oauthToken := bridge.StrVal(jt, "securityOauthToken")
 		if oauthToken == "" {
 			return nil, fmt.Errorf("no securityOauthToken in response")
 		}
@@ -329,14 +341,14 @@ func (a *App) GetAccountQuota(accountID string) (*account.QuotaInfo, error) {
 
 // ListQoderModels 通过当前激活账号的 bridge 拉取 Qoder 上游可用模型列表，
 // 供「模型映射」配置的下拉选择使用。如果 bridge 未启动则返回错误。
-func (a *App) ListQoderModels() ([]QoderModel, error) {
+func (a *App) ListQoderModels() ([]bridge.QoderModel, error) {
 	a.bridgeMu.Lock()
 	b := a.bridge
 	a.bridgeMu.Unlock()
 	if b == nil {
 		return nil, fmt.Errorf("BRIDGE_NOT_RUNNING: bridge 未启动，请先激活账号并启动 bridge")
 	}
-	return b.listAvailableModels()
+	return b.ListAvailableModels()
 }
 
 // CleanupAllData 清理 qccg 产生的本地数据与注入配置。

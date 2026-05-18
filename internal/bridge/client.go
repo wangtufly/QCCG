@@ -1,6 +1,7 @@
-package main
+package bridge
 
 import (
+	"qccg/internal/cosy"
 	"bufio"
 	"context"
 	"encoding/json"
@@ -14,22 +15,22 @@ import (
 	"qccg/logger"
 )
 
-type bearerClient struct {
-	sess *sessionContext
+type BearerClient struct {
+	sess *cosy.SessionContext
 }
 
-func newBearerClient(sess *sessionContext) *bearerClient {
-	return &bearerClient{sess: sess}
+func NewBearerClient(sess *cosy.SessionContext) *BearerClient {
+	return &BearerClient{sess: sess}
 }
 
-func (c *bearerClient) buildHeaders(pathSig, body, accept string, extra map[string]string) (map[string]string, error) {
-	payloadB64, err := buildPayloadB64(c.sess.Info)
+func (c *BearerClient) buildHeaders(pathSig, body, accept string, extra map[string]string) (map[string]string, error) {
+	payloadB64, err := cosy.BuildPayloadB64(c.sess.Info)
 	if err != nil {
 		return nil, err
 	}
-	date := fmt.Sprintf("%d", unixSec())
-	sig := signRequest(payloadB64, c.sess.CosyKey, date, body, pathSig)
-	bearer := composeBearer(payloadB64, sig)
+	date := fmt.Sprintf("%d", cosy.UnixSec())
+	sig := cosy.SignRequest(payloadB64, c.sess.CosyKey, date, body, pathSig)
+	bearer := cosy.ComposeBearer(payloadB64, sig)
 
 	h := map[string]string{
 		"cosy-data-policy":      "agree",
@@ -42,7 +43,7 @@ func (c *bearerClient) buildHeaders(pathSig, body, accept string, extra map[stri
 		"cache-control":         "no-cache",
 		"accept":                accept,
 		"authorization":         bearer,
-		"cosy-version":          cosyVersion,
+		"cosy-version":          cosy.Version,
 		"cosy-machineid":        c.sess.MachineId,
 		"cosy-machinetoken":     c.sess.MachineToken,
 		"login-version":         "v2",
@@ -57,7 +58,7 @@ func (c *bearerClient) buildHeaders(pathSig, body, accept string, extra map[stri
 	return h, nil
 }
 
-func pathSigFrom(rawURL string) (string, error) {
+func PathSigFrom(rawURL string) (string, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return "", err
@@ -71,8 +72,8 @@ func pathSigFrom(rawURL string) (string, error) {
 
 // callGet 用 cosy 签名发送 GET 请求，body 部分参与签名时为空字符串。
 // 用于 /algo/api/v2/model/list 之类的纯查询接口。
-func (c *bearerClient) callGet(fullURL string) (map[string]interface{}, error) {
-	pathSig, err := pathSigFrom(fullURL)
+func (c *BearerClient) callGet(fullURL string) (map[string]interface{}, error) {
+	pathSig, err := PathSigFrom(fullURL)
 	if err != nil {
 		return nil, err
 	}
@@ -102,8 +103,8 @@ func (c *bearerClient) callGet(fullURL string) (map[string]interface{}, error) {
 	return result, err
 }
 
-func (c *bearerClient) callPost(fullURL string, jsonBody interface{}) (map[string]interface{}, error) {
-	pathSig, err := pathSigFrom(fullURL)
+func (c *BearerClient) callPost(fullURL string, jsonBody interface{}) (map[string]interface{}, error) {
+	pathSig, err := PathSigFrom(fullURL)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +114,7 @@ func (c *bearerClient) callPost(fullURL string, jsonBody interface{}) (map[strin
 		if err != nil {
 			return nil, err
 		}
-		bodyStr, err = qoderEncode(plain)
+		bodyStr, err = cosy.Encode(plain)
 		if err != nil {
 			return nil, err
 		}
@@ -146,8 +147,8 @@ func (c *bearerClient) callPost(fullURL string, jsonBody interface{}) (map[strin
 
 // openStreamLines sends a POST, reads SSE lines, calls onLine for each non-empty line.
 // ctx 可用于取消流式读取（例如客户端断开连接时）。
-func (c *bearerClient) openStreamLines(ctx context.Context, fullURL string, jsonBody interface{}, extra map[string]string, onLine func(string)) error {
-	pathSig, err := pathSigFrom(fullURL)
+func (c *BearerClient) openStreamLines(ctx context.Context, fullURL string, jsonBody interface{}, extra map[string]string, onLine func(string)) error {
+	pathSig, err := PathSigFrom(fullURL)
 	if err != nil {
 		return err
 	}
@@ -155,7 +156,7 @@ func (c *bearerClient) openStreamLines(ctx context.Context, fullURL string, json
 	if err != nil {
 		return err
 	}
-	bodyStr, err := qoderEncode(plain)
+	bodyStr, err := cosy.Encode(plain)
 	if err != nil {
 		return err
 	}

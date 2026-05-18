@@ -1,8 +1,8 @@
-package main
+package bridge
 
 import "encoding/json"
 
-func buildQoderMessages(templateMsgs []interface{}, incoming []interface{}, prompt string, toolsEnabled bool) []interface{} {
+func BuildQoderMessages(templateMsgs []interface{}, incoming []interface{}, prompt string, toolsEnabled bool) []interface{} {
 	var rebuilt []interface{}
 
 	hasIncomingSystem := false
@@ -15,7 +15,7 @@ func buildQoderMessages(templateMsgs []interface{}, incoming []interface{}, prom
 	if !hasIncomingSystem && templateMsgs != nil {
 		for _, m := range templateMsgs {
 			if mm, ok := m.(map[string]interface{}); ok && mm["role"] == "system" {
-				rebuilt = append(rebuilt, deepCopyMap(mm))
+				rebuilt = append(rebuilt, DeepCopyMap(mm))
 			}
 		}
 	}
@@ -58,19 +58,19 @@ func buildQoderMessages(templateMsgs []interface{}, incoming []interface{}, prom
 				}
 			}
 		}
-		converted := convertIncomingMessage(mm, toolsEnabled)
+		converted := ConvertIncomingMessage(mm, toolsEnabled)
 		if converted != nil {
 			rebuilt = append(rebuilt, converted)
 		}
 	}
 
 	if len(rebuilt) == 0 && prompt != "" {
-		rebuilt = append(rebuilt, buildUserMessage(prompt))
+		rebuilt = append(rebuilt, BuildUserMessage(prompt))
 	}
 	return rebuilt
 }
 
-func convertIncomingMessage(msg map[string]interface{}, toolsEnabled bool) map[string]interface{} {
+func ConvertIncomingMessage(msg map[string]interface{}, toolsEnabled bool) map[string]interface{} {
 	role, _ := msg["role"].(string)
 	content := msg["content"]
 
@@ -80,7 +80,7 @@ func convertIncomingMessage(msg map[string]interface{}, toolsEnabled bool) map[s
 		blockType, _ := firstBlock["type"].(string)
 
 		// assistant message with tool_use blocks
-		if role == "assistant" && hasBlockType(contentArr, "tool_use") {
+		if role == "assistant" && HasBlockType(contentArr, "tool_use") {
 			out := map[string]interface{}{"role": "assistant", "content": ""}
 			var toolCalls []interface{}
 			var textParts string
@@ -169,22 +169,22 @@ func convertIncomingMessage(msg map[string]interface{}, toolsEnabled bool) map[s
 			if textParts == "" {
 				return nil
 			}
-			return buildStructuredMessage(role, textParts)
+			return BuildStructuredMessage(role, textParts)
 		}
 	}
 
-	text := normalizeMessageContent(msg)
+	text := NormalizeMessageContent(msg)
 
 	if role == "assistant" && toolsEnabled {
 		if tc, ok := msg["tool_calls"]; ok {
-			out := buildStructuredMessage("assistant", text)
+			out := BuildStructuredMessage("assistant", text)
 			out["tool_calls"] = tc
 			return out
 		}
 	}
 
 	if role == "tool" {
-		out := buildStructuredMessage("tool", text)
+		out := BuildStructuredMessage("tool", text)
 		if name, ok := msg["name"].(string); ok {
 			out["name"] = name
 		}
@@ -199,12 +199,12 @@ func convertIncomingMessage(msg map[string]interface{}, toolsEnabled bool) map[s
 	}
 
 	if role == "user" {
-		return buildUserMessage(text)
+		return BuildUserMessage(text)
 	}
-	return buildStructuredMessage(role, text)
+	return BuildStructuredMessage(role, text)
 }
 
-func hasBlockType(blocks []interface{}, blockType string) bool {
+func HasBlockType(blocks []interface{}, blockType string) bool {
 	for _, block := range blocks {
 		if b, ok := block.(map[string]interface{}); ok {
 			if b["type"] == blockType {
@@ -215,28 +215,28 @@ func hasBlockType(blocks []interface{}, blockType string) bool {
 	return false
 }
 
-func buildUserMessage(text string) map[string]interface{} {
+func BuildUserMessage(text string) map[string]interface{} {
 	return map[string]interface{}{
 		"role":    "user",
 		"content": "",
 		"contents": []interface{}{
 			map[string]interface{}{"type": "text", "text": text},
 		},
-		"response_meta":               blankResponseMeta(),
+		"response_meta":               BlankResponseMeta(),
 		"reasoning_content_signature": "",
 	}
 }
 
-func buildStructuredMessage(role, text string) map[string]interface{} {
+func BuildStructuredMessage(role, text string) map[string]interface{} {
 	return map[string]interface{}{
 		"role":                        role,
 		"content":                     text,
-		"response_meta":               blankResponseMeta(),
+		"response_meta":               BlankResponseMeta(),
 		"reasoning_content_signature": "",
 	}
 }
 
-func blankResponseMeta() map[string]interface{} {
+func BlankResponseMeta() map[string]interface{} {
 	return map[string]interface{}{
 		"id": "",
 		"usage": map[string]interface{}{
@@ -247,7 +247,7 @@ func blankResponseMeta() map[string]interface{} {
 	}
 }
 
-func normalizeMessageContent(msg map[string]interface{}) string {
+func NormalizeMessageContent(msg map[string]interface{}) string {
 	c := msg["content"]
 	if s, ok := c.(string); ok {
 		return s

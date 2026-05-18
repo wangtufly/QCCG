@@ -1,4 +1,4 @@
-package main
+package cosy
 
 import (
 	"encoding/base64"
@@ -27,7 +27,7 @@ func init() {
 	s2c['='] = customPad
 }
 
-func qoderEncode(plaintext []byte) (string, error) {
+func Encode(plaintext []byte) (string, error) {
 	std := base64.StdEncoding.EncodeToString(plaintext)
 	n := len(std)
 	a := n / 3
@@ -43,7 +43,7 @@ func qoderEncode(plaintext []byte) (string, error) {
 	return string(out), nil
 }
 
-func qoderDecode(encoded string) ([]byte, error) {
+func Decode(encoded string) ([]byte, error) {
 	n := len(encoded)
 	mapped := make([]byte, n)
 	for i := 0; i < n; i++ {

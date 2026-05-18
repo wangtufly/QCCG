@@ -1,6 +1,7 @@
-package main
+package bridge
 
 import (
+	"qccg/internal/cosy"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,7 +12,7 @@ import (
 	"qccg/logger"
 )
 
-func (b *bridge) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
+func (b *Bridge) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 	if r.Method != "POST" {
 		w.WriteHeader(405)
@@ -19,32 +20,32 @@ func (b *bridge) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeErr(w, err)
+		WriteErr(w, err)
 		return
 	}
 
-	reqID := newUUID()[:8]
+	reqID := cosy.NewUUID()[:8]
 	logger.Info("[Chat][%s] 收到请求 %s %s body_size=%d", reqID, r.Method, r.URL.Path, len(body))
-	logger.Debug("[Chat][%s] 请求体（敏感字段已脱敏）: %s", reqID, redactRequestBodyJSON(body))
+	logger.Debug("[Chat][%s] 请求体（敏感字段已脱敏）: %s", reqID, RedactRequestBodyJSON(body))
 
 	var req map[string]interface{}
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeErr(w, err)
+		WriteErr(w, err)
 		return
 	}
 	stream, _ := req["stream"].(bool)
-	model := strValDefault(req, "model", "lite")
+	model := StrValDefault(req, "model", "lite")
 	incomingMsgs, _ := req["messages"].([]interface{})
 	tools := req["tools"]
 	toolsEnabled := tools != nil
 
 	logger.Info("[Chat][%s] model=%s stream=%v tools=%v msgs=%d", reqID, model, stream, toolsEnabled, len(incomingMsgs))
 
-	prompt := extractLatestUserPrompt(incomingMsgs)
-	messages := buildQoderMessages(b.templateMessages(), incomingMsgs, prompt, toolsEnabled)
+	prompt := ExtractLatestUserPrompt(incomingMsgs)
+	messages := BuildQoderMessages(b.templateMessages(), incomingMsgs, prompt, toolsEnabled)
 
-	reqId := "chatcmpl-" + newRequestId()
-	created := unixSec()
+	reqId := "chatcmpl-" + cosy.NewRequestID()
+	created := cosy.UnixSec()
 	ctx := r.Context()
 
 	if stream {
@@ -56,8 +57,8 @@ func (b *bridge) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 		var toolCallBuf []interface{}
 
-		err = b.callQoder(ctx, inferAgent(model), messages, model, tools, func(d bridgeDelta) {
-			chunk := makeChatChunk(reqId, created, model)
+		err = b.CallQoder(ctx, InferAgent(model), messages, model, tools, func(d Delta) {
+			chunk := MakeChatChunk(reqId, created, model)
 			choices := chunk["choices"].([]interface{})
 			delta := choices[0].(map[string]interface{})["delta"].(map[string]interface{})
 			if d.Content != "" {
@@ -88,7 +89,7 @@ func (b *bridge) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		if len(toolCallBuf) > 0 {
 			finishReason = "tool_calls"
 		}
-		done := makeChatChunk(reqId, created, model)
+		done := MakeChatChunk(reqId, created, model)
 		choices := done["choices"].([]interface{})
 		ch := choices[0].(map[string]interface{})
 		ch["finish_reason"] = finishReason
@@ -102,7 +103,7 @@ func (b *bridge) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	} else {
 		var full strings.Builder
 		var toolCallBuf []interface{}
-		err = b.callQoder(ctx, inferAgent(model), messages, model, tools, func(d bridgeDelta) {
+		err = b.CallQoder(ctx, InferAgent(model), messages, model, tools, func(d Delta) {
 			if d.Content != "" {
 				full.WriteString(d.Content)
 			}
@@ -112,7 +113,7 @@ func (b *bridge) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		})
 		if err != nil {
 			logger.Error("[Chat][%s] 请求失败: %v (耗时 %dms)", reqID, err, time.Since(startTime).Milliseconds())
-			writeErr(w, fmt.Errorf("request failed: %w", err))
+			WriteErr(w, fmt.Errorf("request failed: %w", err))
 			return
 		}
 		finishReason := "stop"
@@ -134,21 +135,21 @@ func (b *bridge) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		}
 		logger.Info("[Chat][%s] 完成 finish=%s content_len=%d tool_calls=%d 耗时=%dms", reqID, finishReason, full.Len(), len(toolCallBuf), time.Since(startTime).Milliseconds())
 		logger.Debug("[Chat][%s] 响应体: %s", reqID, func() string { d, _ := json.Marshal(resp); return string(d) }())
-		writeJSON(w, resp)
+		WriteJSON(w, resp)
 	}
 }
 
-func extractLatestUserPrompt(msgs []interface{}) string {
+func ExtractLatestUserPrompt(msgs []interface{}) string {
 	for i := len(msgs) - 1; i >= 0; i-- {
 		m, _ := msgs[i].(map[string]interface{})
 		if m["role"] == "user" {
-			return normalizeMessageContent(m)
+			return NormalizeMessageContent(m)
 		}
 	}
 	return ""
 }
 
-func makeChatChunk(id string, created int64, model string) map[string]interface{} {
+func MakeChatChunk(id string, created int64, model string) map[string]interface{} {
 	return map[string]interface{}{
 		"id": id, "object": "chat.completion.chunk",
 		"created": created, "model": model,
@@ -158,21 +159,21 @@ func makeChatChunk(id string, created int64, model string) map[string]interface{
 	}
 }
 
-func (b *bridge) templateMessages() []interface{} {
+func (b *Bridge) templateMessages() []interface{} {
 	if msgs, ok := b.templateBase["messages"].([]interface{}); ok {
 		return msgs
 	}
 	return nil
 }
 
-func writeJSON(w http.ResponseWriter, v interface{}) {
+func WriteJSON(w http.ResponseWriter, v interface{}) {
 	data, _ := json.Marshal(v)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 	w.Write(data)
 }
 
-func writeErr(w http.ResponseWriter, err error) {
+func WriteErr(w http.ResponseWriter, err error) {
 	body, _ := json.Marshal(map[string]interface{}{
 		"error": map[string]interface{}{"message": err.Error(), "type": "qoder_error"},
 	})
