@@ -51,6 +51,32 @@ const CLAUDE_MODEL_SLOTS: Array<{ envKey: string; fromKey: string }> = [
 const PREVIEW_MAPPING_KEY = '_qccg_model_mapping'
 const QODER_API_KEY = 'qccg'
 
+// 从 claude settings.json 内容里读出 env.ANTHROPIC_DEFAULT_*_MODEL 三个槽位，
+// 转成 { opus, sonnet, haiku } 形式的映射 bucket。无法解析时返回 null。
+function extractClaudeSlotMapping(content: string): Record<string, string> | null {
+  try {
+    const obj = content.trim() ? JSON.parse(content) : {}
+    if (!obj || typeof obj !== 'object') return {}
+    const env = (obj as any).env
+    if (!env || typeof env !== 'object') return {}
+    const out: Record<string, string> = {}
+    for (const { envKey, fromKey } of CLAUDE_MODEL_SLOTS) {
+      const v = env[envKey]
+      if (typeof v === 'string' && v) out[fromKey] = v
+    }
+    return out
+  } catch {
+    return null
+  }
+}
+
+function shallowEqualBucket(a: Record<string, string>, b: Record<string, string>): boolean {
+  const ak = Object.keys(a), bk = Object.keys(b)
+  if (ak.length !== bk.length) return false
+  for (const k of ak) if (a[k] !== b[k]) return false
+  return true
+}
+
 // ============== MappingSelect ==============
 interface MappingSelectProps {
   value: string
@@ -355,10 +381,12 @@ export default function ClientConfigPage() {
     if (activeType) loadFile(activeType)
   }, [activeType, loadFile])
 
-  // 文件就绪后注入映射预览
+  // 文件就绪后注入映射预览。pendingMapping 优先于 savedMappings，
+  // 否则用户在编辑器里改了 ANTHROPIC_DEFAULT_*_MODEL 后，loadFile 触发的 useEffect
+  // 会用旧的 savedMappings 把内容立刻覆盖回去，看起来"保存了等于没保存"。
   useEffect(() => {
     if (!fileMeta?.format || !activeType) return
-    const bucket = savedMappings[activeType]
+    const bucket = pendingMapping?.[activeType] ?? savedMappings[activeType]
     setFileContent(prev => patchMappingPreview(prev, fileMeta.format, bucket || {}, activeType))
   }, [fileMeta?.path, activeType])
 
@@ -409,6 +437,24 @@ export default function ClientConfigPage() {
     setMappingDirty(false)
     loadFile(activeType)
   }
+
+  // 编辑器内容变更入口。除了同步 fileContent / fileDirty，
+  // 还会把 claude env.ANTHROPIC_DEFAULT_*_MODEL 反向同步到 pendingMapping，
+  // 让用户直接在编辑器里改这三个字段也能持久化（不会被映射预览逻辑覆盖回去）。
+  const handleEditorChange = useCallback((v: string) => {
+    setFileContent(v)
+    setFileDirty(true)
+    if (activeType !== 'claude' || fileMeta?.format !== 'json') return
+    const slot = extractClaudeSlotMapping(v)
+    if (!slot) return // 解析失败（用户可能正在打字），不动 mapping
+    const baseline = pendingMapping?.['claude'] ?? savedMappings['claude'] ?? {}
+    if (shallowEqualBucket(slot, baseline)) return
+    setPendingMapping(prev => {
+      const base = prev ?? { ...savedMappings }
+      return { ...base, claude: slot }
+    })
+    setMappingDirty(true)
+  }, [activeType, fileMeta?.format, pendingMapping, savedMappings])
 
   const handleSaveFile = async () => {
     if (!activeType) return
@@ -589,7 +635,7 @@ export default function ClientConfigPage() {
               <ConfigEditor
                 ref={editorRef}
                 value={fileContent}
-                onChange={v => { setFileContent(v); setFileDirty(true) }}
+                onChange={handleEditorChange}
                 format={fileMeta?.format as 'json' | 'toml' | 'dotenv' | undefined}
                 placeholderText={fileLoading ? '加载中…' : '配置文件内容…'}
                 minLines={16}

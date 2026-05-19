@@ -423,45 +423,140 @@ func writeJSONObjectOrdered(path string, m map[string]interface{}) error {
 // Claude settings.json 的顶级键顺序：env, enabledPlugins, permissions, model, ...
 var topLevelOrder = []string{"env", "enabledPlugins", "permissions", "model", "extensions", "hooks"}
 
-func marshalJSONOrderPreserved(v interface{}) ([]byte, error) {
-	switch obj := v.(type) {
+// orderedKeys 计算 map 的稳定 key 顺序：predefined 顺序优先，其余按字母序。
+func orderedKeys(m map[string]interface{}, predefined []string) []string {
+	keys := make([]string, 0, len(m))
+	used := make(map[string]bool, len(m))
+	for _, k := range predefined {
+		if _, ok := m[k]; ok {
+			keys = append(keys, k)
+			used[k] = true
+		}
+	}
+	extras := make([]string, 0, len(m))
+	for k := range m {
+		if !used[k] {
+			extras = append(extras, k)
+		}
+	}
+	sort.Strings(extras)
+	return append(keys, extras...)
+}
+
+// marshalJSONValue 递归地把任意 JSON 值序列化为带缩进的字节流。
+// 与 json.MarshalIndent 的差异：1) 关闭 HTMLEscape，避免 hook 命令里的 >/& 被改写成
+// >/&；2) map 的 key 顺序稳定（顶层按 topLevelOrder，其余按字母序），
+// 避免每次写入因 Go map 遍历随机产生 diff 抖动。
+//
+// indent 是基础缩进单元（两个空格），prefix 是当前层级前缀。
+func marshalJSONValue(v interface{}, indent, prefix string) ([]byte, error) {
+	switch val := v.(type) {
 	case map[string]interface{}:
+		if len(val) == 0 {
+			return []byte("{}"), nil
+		}
 		var b strings.Builder
-		keySet := make(map[string]bool)
-		keys := make([]string, 0, len(obj))
-		for _, k := range topLevelOrder {
-			if _, ok := obj[k]; ok {
-				keys = append(keys, k)
-				keySet[k] = true
-			}
-		}
-		// 不在预定义顺序里的 key 按字母序追加
-		extras := make([]string, 0)
-		for k := range obj {
-			if !keySet[k] {
-				extras = append(extras, k)
-			}
-		}
-		sort.Strings(extras)
-		keys = append(keys, extras...)
 		b.WriteString("{\n")
+		childPrefix := prefix + indent
+		keys := orderedKeys(val, nil)
 		for i, k := range keys {
-			// 子对象用标准 MarshalIndent，再整体缩进
-			valBytes, err := json.MarshalIndent(obj[k], "  ", "  ")
+			child, err := marshalJSONValue(val[k], indent, childPrefix)
 			if err != nil {
 				return nil, err
 			}
-			comma := ","
-			if i == len(keys)-1 {
-				comma = ""
+			keyBytes, err := encodeStringNoHTMLEscape(k)
+			if err != nil {
+				return nil, err
 			}
-			fmt.Fprintf(&b, "  %q: %s%s\n", k, valBytes, comma)
+			b.WriteString(childPrefix)
+			b.Write(keyBytes)
+			b.WriteString(": ")
+			b.Write(child)
+			if i < len(keys)-1 {
+				b.WriteByte(',')
+			}
+			b.WriteByte('\n')
 		}
-		b.WriteString("}")
+		b.WriteString(prefix)
+		b.WriteByte('}')
+		return []byte(b.String()), nil
+	case []interface{}:
+		if len(val) == 0 {
+			return []byte("[]"), nil
+		}
+		var b strings.Builder
+		b.WriteString("[\n")
+		childPrefix := prefix + indent
+		for i, item := range val {
+			child, err := marshalJSONValue(item, indent, childPrefix)
+			if err != nil {
+				return nil, err
+			}
+			b.WriteString(childPrefix)
+			b.Write(child)
+			if i < len(val)-1 {
+				b.WriteByte(',')
+			}
+			b.WriteByte('\n')
+		}
+		b.WriteString(prefix)
+		b.WriteByte(']')
 		return []byte(b.String()), nil
 	default:
-		return json.MarshalIndent(v, "", "  ")
+		return encodeScalarNoHTMLEscape(v)
 	}
+}
+
+// encodeStringNoHTMLEscape 把字符串用 JSON 规则编码，但不做 HTML 转义。
+func encodeStringNoHTMLEscape(s string) ([]byte, error) {
+	return encodeScalarNoHTMLEscape(s)
+}
+
+// encodeScalarNoHTMLEscape 序列化任意非 map/slice 标量值，关闭 HTMLEscape。
+func encodeScalarNoHTMLEscape(v interface{}) ([]byte, error) {
+	var buf strings.Builder
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	// json.Encoder.Encode 会追加一个换行，去掉。
+	out := buf.String()
+	out = strings.TrimRight(out, "\n")
+	return []byte(out), nil
+}
+
+func marshalJSONOrderPreserved(v interface{}) ([]byte, error) {
+	m, ok := v.(map[string]interface{})
+	if !ok {
+		return marshalJSONValue(v, "  ", "")
+	}
+	if len(m) == 0 {
+		return []byte("{}"), nil
+	}
+	var b strings.Builder
+	b.WriteString("{\n")
+	keys := orderedKeys(m, topLevelOrder)
+	for i, k := range keys {
+		child, err := marshalJSONValue(m[k], "  ", "  ")
+		if err != nil {
+			return nil, err
+		}
+		keyBytes, err := encodeStringNoHTMLEscape(k)
+		if err != nil {
+			return nil, err
+		}
+		b.WriteString("  ")
+		b.Write(keyBytes)
+		b.WriteString(": ")
+		b.Write(child)
+		if i < len(keys)-1 {
+			b.WriteByte(',')
+		}
+		b.WriteByte('\n')
+	}
+	b.WriteString("}")
+	return []byte(b.String()), nil
 }
 
 func readClientStatus(clientType, home string) (applied bool, model string, err error) {

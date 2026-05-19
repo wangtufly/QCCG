@@ -36,12 +36,12 @@ func main() {
 	})
 
 	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:     "QCCG",
-		Width:     900,
-		Height:    650,
-		MinWidth:  720,
-		MinHeight: 500,
-		Hidden:    true, // 启动时隐藏，由托盘控制显示
+		Title:            "QCCG",
+		Width:            900,
+		Height:           650,
+		MinWidth:         720,
+		MinHeight:        500,
+		Hidden:           false, // 启动时显示主窗口；用户关闭窗口后由托盘控制再次显示
 		BackgroundColour: application.NewRGBA(246, 245, 242, 1),
 		Mac: application.MacWindow{
 			TitleBar:   application.MacTitleBarHiddenInset,
@@ -55,6 +55,9 @@ func main() {
 	appService.window = mainWindow
 
 	setupTray(app, mainWindow, appService)
+
+	// 启动后把主窗口抢到最前，避免被其他应用遮挡
+	mainWindow.Focus()
 
 	err := app.Run()
 	if err != nil {
