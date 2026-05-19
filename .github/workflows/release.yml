@@ -1,5 +1,8 @@
 name: Build and Release
 
+# Touched after repo rename (qoder2API -> QCCG) to force GitHub Actions
+# to re-parse this workflow's metadata.
+
 on:
   push:
     tags:
