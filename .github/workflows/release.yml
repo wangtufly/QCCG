@@ -218,7 +218,7 @@ jobs:
   build-linux:
     needs: check-latest
     if: needs.check-latest.outputs.is_latest == 'true'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
