@@ -208,6 +208,14 @@ jobs:
           find artifacts -type f | sort
           echo "=========================="
       
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -name "*.dmg" -exec cp {} release-assets/ \;
+          find artifacts -name "*.tar.gz" -exec cp {} release-assets/ \;
+          echo "=== Release assets ==="
+          ls -lh release-assets/
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -242,8 +250,6 @@ jobs:
             tar -xzf qccg-${{ env.VERSION }}-linux-amd64.tar.gz
             ./qccg
             ```
-          files: |
-            artifacts/**/*.dmg
-            artifacts/**/*.tar.gz
+          files: release-assets/*
           generate_release_notes: true
           fail_on_unmatched_files: false
