@@ -23,9 +23,9 @@ export default function SettingsPage() {
   const [cleanupMessage, setCleanupMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    GetSettings().then(s => {
+    GetSettings().then((s: any) => {
       if (s) setSettings(s)
-    }).catch(err => {
+    }).catch((err: any) => {
       console.error('Failed to load settings:', err)
     })
   }, [])
