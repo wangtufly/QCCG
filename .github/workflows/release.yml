@@ -217,7 +217,7 @@ jobs:
 
   build-linux:
     needs: check-latest
-    if: needs.check-latest.outputs.is_latest == 'true' && !contains(github.ref, 'alpha')
+    if: needs.check-latest.outputs.is_latest == 'true' && !contains(env.VERSION, 'alpha')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
