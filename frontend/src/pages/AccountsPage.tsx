@@ -3,6 +3,14 @@ import { DndContext, closestCenter, DragEndEvent, PointerSensor, useSensor, useS
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import AccountCard from '../components/AccountCard'
 import AddAccountModal from '../components/AddAccountModal'
+import {
+  ListAccounts,
+  SetActiveAccount,
+  DeleteAccount,
+  ReorderAccounts,
+  GetSettings,
+  Confirm,
+} from '../../bindings/qccg/app'
 
 interface Account {
   id: string
@@ -15,28 +23,20 @@ interface Account {
 }
 
 async function listAccounts(): Promise<Account[]> {
-  if ((window as any).go?.main?.App?.ListAccounts) {
-    return (window as any).go.main.App.ListAccounts()
-  }
-  return []
+  const accounts = await ListAccounts()
+  return (accounts as unknown as Account[]) ?? []
 }
 
 async function setActiveAccount(id: string) {
-  if ((window as any).go?.main?.App?.SetActiveAccount) {
-    return (window as any).go.main.App.SetActiveAccount(id)
-  }
+  return SetActiveAccount(id)
 }
 
 async function deleteAccount(id: string) {
-  if ((window as any).go?.main?.App?.DeleteAccount) {
-    return (window as any).go.main.App.DeleteAccount(id)
-  }
+  return DeleteAccount(id)
 }
 
 async function reorderAccounts(ids: string[]) {
-  if ((window as any).go?.main?.App?.ReorderAccounts) {
-    return (window as any).go.main.App.ReorderAccounts(ids)
-  }
+  return ReorderAccounts(ids)
 }
 
 export default function AccountsPage() {
@@ -51,14 +51,14 @@ export default function AccountsPage() {
 
   useEffect(() => {
     refresh()
-    ;(window as any).go?.main?.App?.GetSettings()
+    GetSettings()
       .then((s: any) => { if (s?.quota_refresh_interval != null) setRefreshInterval(s.quota_refresh_interval) })
       .catch(() => {})
   }, [])
 
   const handleActivate = (id: string) => setActiveAccount(id).then(refresh)
   const handleDelete = async (id: string) => {
-    const ok = await (window as any).go?.main?.App?.Confirm('删除账号', '确认删除此账号？此操作不可撤销。')
+    const ok = await Confirm('删除账号', '确认删除此账号？此操作不可撤销。')
     if (ok) deleteAccount(id).then(refresh)
   }
 

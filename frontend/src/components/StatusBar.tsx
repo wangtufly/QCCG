@@ -1,39 +1,33 @@
 import { useEffect, useState } from 'react'
+import { GetStatus, StartBridge, StopBridge } from '../../bindings/qccg/app'
 
 interface Status { running: boolean; port: number; active_account: string }
 
 async function getStatus(): Promise<Status> {
-  if (typeof window !== 'undefined' && (window as any).go?.main?.App?.GetStatus) {
-    return (window as any).go.main.App.GetStatus()
-  }
-  return { running: false, port: 8963, active_account: '' }
+  return GetStatus() as unknown as Status
 }
 
 async function startBridge() {
-  if (typeof window !== 'undefined' && (window as any).go?.main?.App?.StartBridge) {
-    try {
-      console.log('[StatusBar] Starting bridge...')
-      const result = await (window as any).go.main.App.StartBridge()
-      console.log('[StatusBar] Start result:', result)
-      return result
-    } catch (err) {
-      console.error('[StatusBar] Start error:', err)
-      throw err
-    }
+  try {
+    console.log('[StatusBar] Starting bridge...')
+    const result = await StartBridge()
+    console.log('[StatusBar] Start result:', result)
+    return result
+  } catch (err) {
+    console.error('[StatusBar] Start error:', err)
+    throw err
   }
 }
 
 async function stopBridge() {
-  if (typeof window !== 'undefined' && (window as any).go?.main?.App?.StopBridge) {
-    try {
-      console.log('[StatusBar] Stopping bridge...')
-      const result = await (window as any).go.main.App.StopBridge()
-      console.log('[StatusBar] Stop result:', result)
-      return result
-    } catch (err) {
-      console.error('[StatusBar] Stop error:', err)
-      throw err
-    }
+  try {
+    console.log('[StatusBar] Stopping bridge...')
+    const result = await StopBridge()
+    console.log('[StatusBar] Stop result:', result)
+    return result
+  } catch (err) {
+    console.error('[StatusBar] Stop error:', err)
+    throw err
   }
 }
 

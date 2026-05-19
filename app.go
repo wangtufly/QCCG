@@ -1,8 +1,6 @@
 package main
 
 import (
-	"qccg/internal/bridge"
-	"qccg/internal/cosy"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,9 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"qccg/account"
+	"qccg/internal/bridge"
+	"qccg/internal/cosy"
 	"qccg/logger"
 )
 
@@ -28,22 +28,26 @@ type QoderModel struct {
 	MaxInputTokens int    `json:"max_input_tokens,omitempty"`
 }
 
+// App 持有 Wails v3 的 app 和 window 引用，替代 v2 的 ctx。
 type App struct {
-	ctx         context.Context
+	app         *application.App
+	window      *application.WebviewWindow
 	bridge      *bridge.Bridge
 	bridgeSrv   *http.Server
 	bridgeMu    sync.Mutex
 	bridgePort  int
 	bridgeToken string // 自定义鉴权 token，空则使用默认值 "qccg"
+
+	// 托盘刷新回调，由 tray.go 设置
+	refreshTray func()
 }
 
-func NewApp() *App {
-	return &App{bridgePort: 8963}
+func NewApp(app *application.App, window *application.WebviewWindow) *App {
+	return &App{app: app, window: window, bridgePort: 8963}
 }
 
-func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
-
+// ServiceStartup 实现 v3 service 生命周期钩子，替代 v2 的 startup(ctx)。
+func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	// 文件日志在 Info("Application started") 之前初始化，确保启动期日志也能落盘
 	if home, err := os.UserHomeDir(); err == nil {
 		logDir := filepath.Join(home, ".qccg", "logs")
@@ -70,6 +74,7 @@ func (a *App) startup(ctx context.Context) {
 	if acct != nil {
 		_ = a.startBridgeWithAccount(acct)
 	}
+	return nil
 }
 
 func (a *App) ListAccounts() []account.Account {
@@ -81,7 +86,7 @@ func (a *App) ListAccounts() []account.Account {
 }
 
 func (a *App) AddAccountByPAT(pat string) (*account.Account, error) {
-	defer a.refreshAppMenu()
+	defer a.refreshTrayMenu()
 	mid := cosy.NewUUID()
 	mtoken := cosy.NewBase64Token()
 	mtype := cosy.NewHexToken(18)
@@ -119,15 +124,15 @@ func (a *App) WaitOAuthLogin(loginID string) {
 	go func() {
 		acct, err := account.WaitLogin(loginID)
 		if err != nil {
-			runtime.EventsEmit(a.ctx, "oauth:error", err.Error())
+			a.window.EmitEvent("oauth:error", err.Error())
 			return
 		}
 		if err := account.Save(acct); err != nil {
-			runtime.EventsEmit(a.ctx, "oauth:error", err.Error())
+			a.window.EmitEvent("oauth:error", err.Error())
 			return
 		}
-		a.refreshAppMenu()
-		runtime.EventsEmit(a.ctx, "oauth:success", acct)
+		a.refreshTrayMenu()
+		a.window.EmitEvent("oauth:success", acct)
 	}()
 }
 
@@ -136,33 +141,31 @@ func (a *App) CancelOAuthLogin(loginID string) {
 }
 
 func (a *App) HideWindow() {
-	runtime.WindowHide(a.ctx)
+	a.window.Hide()
 }
 
 func (a *App) QuitApp() {
-	runtime.Quit(a.ctx)
+	a.app.Quit()
 }
 
 func (a *App) Confirm(title, message string) bool {
-	result, _ := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
-		Type:          runtime.QuestionDialog,
-		Title:         title,
-		Message:       message,
-		Buttons:       []string{"确认", "取消"},
-		DefaultButton: "取消",
-		CancelButton:  "取消",
-	})
-	return result == "确认"
+	result := false
+	dlg := a.app.Dialog.Question().SetMessage(message).SetTitle(title)
+	dlg.AddButton("确认").OnClick(func() { result = true })
+	cancelBtn := dlg.AddButton("取消").OnClick(func() { result = false })
+	dlg.SetCancelButton(cancelBtn)
+	dlg.Show()
+	return result
 }
 
 func (a *App) DeleteAccount(id string) error {
-	defer a.refreshAppMenu()
+	defer a.refreshTrayMenu()
 	_ = account.DeleteSecret(id)
 	return account.Delete(id)
 }
 
 func (a *App) SetActiveAccount(id string) error {
-	defer a.refreshAppMenu()
+	defer a.refreshTrayMenu()
 	if err := account.SetActive(id); err != nil {
 		return err
 	}
@@ -187,7 +190,7 @@ func (a *App) GetStatus() account.Status {
 }
 
 func (a *App) StartBridge() error {
-	defer a.refreshAppMenu()
+	defer a.refreshTrayMenu()
 	logger.Info("StartBridge called")
 	acct, err := account.GetActive()
 	if err != nil || acct == nil {
@@ -199,7 +202,7 @@ func (a *App) StartBridge() error {
 }
 
 func (a *App) StopBridge() error {
-	defer a.refreshAppMenu()
+	defer a.refreshTrayMenu()
 	a.bridgeMu.Lock()
 	defer a.bridgeMu.Unlock()
 	if a.bridgeSrv == nil {
@@ -290,7 +293,7 @@ func (a *App) SaveSettings(s *account.Settings) error {
 
 // UpdateAccountAPIMode 更新账号的 API 模式
 func (a *App) UpdateAccountAPIMode(accountID, apiMode string) error {
-	defer a.refreshAppMenu()
+	defer a.refreshTrayMenu()
 	acct, err := account.Get(accountID)
 	if err != nil {
 		return err
@@ -348,8 +351,7 @@ func (a *App) GetAccountQuota(accountID string) (*account.QuotaInfo, error) {
 	return account.FetchQuota(token)
 }
 
-// ListQoderModels 通过当前激活账号的 bridge 拉取 Qoder 上游可用模型列表，
-// 供「模型映射」配置的下拉选择使用。如果 bridge 未启动则返回错误。
+// ListQoderModels 通过当前激活账号的 bridge 拉取 Qoder 上游可用模型列表。
 func (a *App) ListQoderModels() ([]QoderModel, error) {
 	a.bridgeMu.Lock()
 	b := a.bridge
@@ -405,4 +407,11 @@ func (a *App) CleanupAllData() error {
 	}
 	logger.Info("CleanupAllData completed: removed %s", dataDir)
 	return nil
+}
+
+// refreshTrayMenu 回调 tray.go 的重建方法；nil-safe。
+func (a *App) refreshTrayMenu() {
+	if a.refreshTray != nil {
+		a.refreshTray()
+	}
 }

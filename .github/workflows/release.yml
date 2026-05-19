@@ -217,7 +217,7 @@ jobs:
 
   build-linux:
     needs: check-latest
-    if: needs.check-latest.outputs.is_latest == 'true'
+    if: needs.check-latest.outputs.is_latest == 'true' && !contains(env.VERSION, 'alpha')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -312,7 +312,7 @@ jobs:
           retention-days: 30
 
   release:
-    needs: [check-latest, build-macos, build-linux]
+    needs: [check-latest, build-macos]
     if: needs.check-latest.outputs.is_latest == 'true'
     runs-on: ubuntu-latest
     permissions:

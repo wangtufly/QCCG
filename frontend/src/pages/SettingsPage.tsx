@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { RefreshCw } from 'lucide-react'
-import { GetSettings, SaveSettings, CleanupAllData, Confirm } from '../../wailsjs/go/main/App'
-import { account } from '../../wailsjs/go/models'
+import { GetSettings, SaveSettings, CleanupAllData, Confirm } from '../../bindings/qccg/app'
+import * as account from '../../bindings/qccg/account'
 
 function generateToken(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -23,9 +23,9 @@ export default function SettingsPage() {
   const [cleanupMessage, setCleanupMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    GetSettings().then(s => {
+    GetSettings().then((s: any) => {
       if (s) setSettings(s)
-    }).catch(err => {
+    }).catch((err: any) => {
       console.error('Failed to load settings:', err)
     })
   }, [])

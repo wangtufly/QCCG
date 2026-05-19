@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { GetAccountQuota } from '../../bindings/qccg/app'
 
 interface Account {
   id: string
@@ -74,8 +75,8 @@ export default function AccountCard({ account: acct, onActivate, onDelete, refre
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchQuota = () => {
-    ;(window as any).go?.main?.App?.GetAccountQuota(acct.id)
-      .then((q: QuotaInfo) => {
+    GetAccountQuota(acct.id)
+      .then((q: any) => {
         if (q) { setQuota(q); setFetchedAt(Date.now()); setQuotaError(false) }
       })
       .catch(() => setQuotaError(true))

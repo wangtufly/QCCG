@@ -1,61 +1,75 @@
 package main
 
 import (
-	stdruntime "runtime"
+	_ "embed"
 
-	"github.com/wailsapp/wails/v2/pkg/menu"
-	"github.com/wailsapp/wails/v2/pkg/menu/keys"
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"qccg/account"
 	"qccg/logger"
 )
 
-// buildAppMenu 构造 wails 应用菜单（macOS 顶部菜单栏 / Windows&Linux 窗口菜单）。
-// 注：macOS 没有真"系统托盘"，因 energye/systray 与 wails v2 的 NSApp delegate
-// 冲突无法稳定共存（详见提交记录），这里使用 wails 自带菜单作为操作入口。
-func (a *App) buildAppMenu() *menu.Menu {
-	m := menu.NewMenu()
-	if stdruntime.GOOS == "darwin" {
-		m.Append(menu.AppMenu())
+//go:embed build/trayicon.png
+var trayIcon []byte
+
+func setupTray(app *application.App, window *application.WebviewWindow, a *App) {
+	tray := app.SystemTray.New()
+	tray.SetIcon(trayIcon)
+	tray.SetLabel("")
+
+	// 左键单击切换窗口
+	tray.OnClick(func() {
+		if window.IsVisible() {
+			window.Hide()
+		} else {
+			window.Show()
+			window.UnMinimise()
+		}
+	})
+
+	// 设置 a.refreshTray 以便 app.go 中状态变化后重建菜单
+	a.refreshTray = func() {
+		tray.SetMenu(buildTrayMenu(app, window, a))
 	}
 
-	// QCCG 主菜单（macOS 上会作为应用菜单出现）
-	app := m.AddSubmenu("QCCG")
-	app.AddText("显示主界面", keys.CmdOrCtrl("0"), func(_ *menu.CallbackData) {
-		a.showWindow()
-	})
-	app.AddSeparator()
+	// 初始菜单
+	tray.SetMenu(buildTrayMenu(app, window, a))
+}
 
-	// 启动 / 停止 Bridge —— 用文本切换实现，避免 checkbox 在不同平台行为差异
+func buildTrayMenu(app *application.App, window *application.WebviewWindow, a *App) *application.Menu {
+	m := app.NewMenu()
+
+	// 显示主界面
+	m.Add("显示主界面").SetAccelerator("CmdOrCtrl+0").OnClick(func(_ *application.Context) {
+		window.Show()
+		window.UnMinimise()
+	})
+	m.AddSeparator()
+
+	// Bridge 状态动态构建
 	status := a.GetStatus()
 	if status.Running {
-		app.AddText("停止 Bridge", keys.CmdOrCtrl("k"), func(_ *menu.CallbackData) {
+		m.Add("停止 Bridge").SetAccelerator("CmdOrCtrl+K").OnClick(func(_ *application.Context) {
 			if err := a.StopBridge(); err != nil {
-				logger.Error("Menu: stop bridge failed: %v", err)
+				logger.Error("Tray: stop bridge failed: %v", err)
 			}
-			a.refreshAppMenu()
+			a.refreshTrayMenu()
 		})
 	} else {
-		app.AddText("启动 Bridge", keys.CmdOrCtrl("k"), func(_ *menu.CallbackData) {
+		m.Add("启动 Bridge").SetAccelerator("CmdOrCtrl+K").OnClick(func(_ *application.Context) {
 			if err := a.StartBridge(); err != nil {
-				logger.Error("Menu: start bridge failed: %v", err)
+				logger.Error("Tray: start bridge failed: %v", err)
 			}
-			a.refreshAppMenu()
+			a.refreshTrayMenu()
 		})
 	}
-
-	app.AddSeparator()
-	app.AddText("退出", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
-		a.QuitApp()
-	})
+	m.AddSeparator()
 
 	// 账号子菜单
-	accountsMenu := m.AddSubmenu("账号")
 	accounts, _ := account.List()
+	accountsMenu := m.AddSubmenu("账号")
 	if len(accounts) == 0 {
-		empty := accountsMenu.AddText("暂无账号", nil, nil)
-		empty.Disabled = true
+		accountsMenu.Add("暂无账号").SetEnabled(false)
 	} else {
 		for _, acct := range accounts {
 			acct := acct
@@ -66,38 +80,21 @@ func (a *App) buildAppMenu() *menu.Menu {
 			if label == "" && len(acct.ID) >= 8 {
 				label = acct.ID[:8]
 			}
-			accountsMenu.AddCheckbox(label, acct.Active, nil, func(_ *menu.CallbackData) {
+			accountsMenu.AddCheckbox(label, acct.Active).OnClick(func(_ *application.Context) {
 				if err := a.SetActiveAccount(acct.ID); err != nil {
-					logger.Error("Menu: switch account failed: %v", err)
+					logger.Error("Tray: switch account failed: %v", err)
 					return
 				}
-				a.refreshAppMenu()
+				a.refreshTrayMenu()
 			})
 		}
 	}
+	m.AddSeparator()
 
-	if stdruntime.GOOS == "darwin" {
-		m.Append(menu.EditMenu())
-	}
+	// 退出
+	m.Add("退出").SetAccelerator("CmdOrCtrl+Q").OnClick(func(_ *application.Context) {
+		app.Quit()
+	})
 
 	return m
-}
-
-// refreshAppMenu 重新计算并应用菜单；ctx 未就绪时忽略。
-func (a *App) refreshAppMenu() {
-	if a.ctx == nil {
-		return
-	}
-	wruntime.MenuSetApplicationMenu(a.ctx, a.buildAppMenu())
-	wruntime.MenuUpdateApplicationMenu(a.ctx)
-}
-
-// showWindow 唤起主窗口；ctx 尚未就绪时静默忽略。
-func (a *App) showWindow() {
-	if a.ctx == nil {
-		return
-	}
-	wruntime.Show(a.ctx)
-	wruntime.WindowShow(a.ctx)
-	wruntime.WindowUnminimise(a.ctx)
 }

@@ -1,14 +1,10 @@
 package main
 
 import (
-	"context"
 	"embed"
 	"log"
 
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/mac"
+	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"qccg/logger"
 )
@@ -20,39 +16,47 @@ var assets embed.FS
 var basePromptRaw []byte
 
 func main() {
-	app := NewApp()
+	appService := NewApp(nil, nil)
 
-	err := wails.Run(&options.App{
+	app := application.New(application.Options{
+		Name: "QCCG",
+		Mac: application.MacOptions{
+			ApplicationShouldTerminateAfterLastWindowClosed: false, // 关窗不退出，留在托盘
+		},
+		Assets: application.AssetOptions{
+			Handler: application.AssetFileServerFS(assets),
+		},
+		Services: []application.Service{
+			application.NewService(appService),
+		},
+		OnShutdown: func() {
+			logger.Info("Application shutting down")
+			logger.Close()
+		},
+	})
+
+	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "QCCG",
 		Width:     900,
 		Height:    650,
 		MinWidth:  720,
 		MinHeight: 500,
-		AssetServer: &assetserver.Options{
-			Assets: assets,
-		},
-		BackgroundColour:  &options.RGBA{R: 246, G: 245, B: 242, A: 1},
-		Menu:              app.buildAppMenu(),
-		HideWindowOnClose: true,
-		OnStartup: func(ctx context.Context) {
-			app.startup(ctx)
-			// startup 拿到 ctx 后再刷一次菜单，确保账号 / Bridge 状态准确
-			app.refreshAppMenu()
-		},
-		OnShutdown: func(ctx context.Context) {
-			logger.Info("Application shutting down")
-			logger.Close()
-		},
-		Bind: []interface{}{
-			app,
-		},
-		Mac: &mac.Options{
-			TitleBar:             mac.TitleBarHiddenInset(),
-			Appearance:           mac.NSAppearanceNameVibrantLight,
-			WebviewIsTransparent: true,
-			WindowIsTranslucent:  true,
+		Hidden:    true, // 启动时隐藏，由托盘控制显示
+		BackgroundColour: application.NewRGBA(246, 245, 242, 1),
+		Mac: application.MacWindow{
+			TitleBar:   application.MacTitleBarHiddenInset,
+			Appearance: application.NSAppearanceNameVibrantLight,
+			Backdrop:   application.MacBackdropTranslucent,
 		},
 	})
+
+	// 绑定 app 和 window 引用
+	appService.app = app
+	appService.window = mainWindow
+
+	setupTray(app, mainWindow, appService)
+
+	err := app.Run()
 	if err != nil {
 		log.Fatal(err)
 	}

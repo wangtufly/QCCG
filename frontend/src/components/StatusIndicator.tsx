@@ -1,24 +1,18 @@
 import { useEffect, useState } from 'react'
+import { GetStatus, StartBridge, StopBridge } from '../../bindings/qccg/app'
 
 interface Status { running: boolean; port: number; active_account: string; api_mode: string }
 
 async function getStatus(): Promise<Status> {
-  if (typeof window !== 'undefined' && (window as any).go?.main?.App?.GetStatus) {
-    return (window as any).go.main.App.GetStatus()
-  }
-  return { running: false, port: 8963, active_account: '', api_mode: '' }
+  return GetStatus() as unknown as Status
 }
 
 async function startBridge() {
-  if ((window as any).go?.main?.App?.StartBridge) {
-    return (window as any).go.main.App.StartBridge()
-  }
+  return StartBridge()
 }
 
 async function stopBridge() {
-  if ((window as any).go?.main?.App?.StopBridge) {
-    return (window as any).go.main.App.StopBridge()
-  }
+  return StopBridge()
 }
 
 function getBaseUrl(port: number): string {

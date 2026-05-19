@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { GetLogsSince, ClearLogs } from '../../wailsjs/go/main/App'
+import { GetLogsSince, ClearLogs } from '../../bindings/qccg/app'
 
 interface LogEntry {
   seq: number

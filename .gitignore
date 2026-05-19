@@ -1,5 +1,5 @@
 # 编译产物
-qccg
+/qccg
 *.exe
 *.app
 *.dmg

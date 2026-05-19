@@ -12,8 +12,9 @@ import {
   SaveSettings,
   HasClientConfigBackup,
   RestoreClientConfigFile,
-} from '../../wailsjs/go/main/App'
-import { account, main } from '../../wailsjs/go/models'
+} from '../../bindings/qccg/app'
+import * as account from '../../bindings/qccg/account'
+import * as main from '../../bindings/qccg/models'
 import claudeIcon from '../icons/clients/claude.svg'
 import openaiIcon from '../icons/clients/openai.svg'
 import geminiIcon from '../icons/clients/gemini.svg'
@@ -331,7 +332,7 @@ export default function ClientConfigPage() {
       const r = await ReadClientConfigFile(type)
       setFileContent(r?.content || '')
       setFileMeta({ path: r?.path || '', format: r?.format || '', existed: !!r?.existed })
-      const extras = (r?.extra_files || []).map(f => ({
+      const extras = (r?.extra_files || []).map((f: any) => ({
         path: f.path || '',
         format: f.format || '',
         existed: !!f.existed,
