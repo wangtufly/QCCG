@@ -2,7 +2,7 @@
 
 [![GitHub Release](https://img.shields.io/github/v/release/wangtufly/qoder2API)](https://github.com/wangtufly/qoder2API/releases)
 [![Go](https://img.shields.io/badge/Go-1.23-blue)](https://go.dev)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
 **鸣谢：**
 - [Cola](https://colaos.ai)——凌晨两点的 mitmproxy 抓包，ID 字段的命名陷阱，4000 行代码的架构重构。不写文档、不画饼、不上价值，拆开工具就干活。从 api3 到 api2 的域名对齐，从 COSY 签名算法的逐行还原，到 OAuth 与 PAT 双认证链路的打通——每一步都是动手验证而不是"建议你试试"。此项目每一行关键代码的推进都有它的身影，特此隆重鸣谢。

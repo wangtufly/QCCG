@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { AddAccountByPAT, StartOAuthLogin, WaitOAuthLogin, CancelOAuthLogin } from '../../bindings/qccg/app'
+import { Browser, Events } from '@wailsio/runtime'
 
 type Mode = 'select' | 'pat' | 'oauth-waiting'
 
@@ -17,7 +19,7 @@ export default function AddAccountModal({ onClose }: Props) {
     setLoading(true)
     setError('')
     try {
-      await (window as any).go?.main?.App?.AddAccountByPAT(pat.trim())
+      await AddAccountByPAT(pat.trim())
       onClose()
     } catch (e: any) {
       setError(String(e))
@@ -30,19 +32,21 @@ export default function AddAccountModal({ onClose }: Props) {
     setLoading(true)
     setError('')
     try {
-      const session = await (window as any).go?.main?.App?.StartOAuthLogin()
+      const session = await StartOAuthLogin()
       if (!session) throw new Error('启动 OAuth 失败')
       setLoginID(session.login_id)
       setLoginURL(session.login_url)
       setMode('oauth-waiting')
 
-      ;(window as any).runtime?.BrowserOpenURL(session.login_url)
-      ;(window as any).runtime?.EventsOn('oauth:success', () => onClose())
-      ;(window as any).runtime?.EventsOn('oauth:error', (msg: string) => {
-        setError(msg)
+      Browser.OpenURL(session.login_url)
+      // v3 事件回调签名为 (ev) => void，ev.data 才是原始 payload
+      Events.Once('oauth:success', () => onClose())
+      Events.Once('oauth:error', (ev) => {
+        const msg = Array.isArray(ev.data) ? ev.data[0] : ev.data
+        setError(String(msg ?? '授权失败'))
         setMode('select')
       })
-      ;(window as any).go?.main?.App?.WaitOAuthLogin(session.login_id)
+      WaitOAuthLogin(session.login_id)
     } catch (e: any) {
       setError(String(e))
       setLoading(false)
@@ -50,7 +54,7 @@ export default function AddAccountModal({ onClose }: Props) {
   }
 
   const handleCancel = () => {
-    if (loginID) (window as any).go?.main?.App?.CancelOAuthLogin(loginID)
+    if (loginID) CancelOAuthLogin(loginID)
     onClose()
   }
 
