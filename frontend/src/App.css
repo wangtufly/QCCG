@@ -1663,3 +1663,109 @@ body {
 /* 重载：紫色 */
 .icon-btn.icon-btn-reload { color: #8b5cf6; }
 .icon-btn.icon-btn-reload:hover:not(:disabled) { background: rgba(139,92,246,0.1); color: #8b5cf6; }
+
+/* -------- topbar 右侧区域 -------- */
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  --wails-draggable: none;
+}
+.topbar-version {
+  font-size: 12px;
+  color: var(--primary, #10b981);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  user-select: none;
+  opacity: 0.75;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.topbar-version:hover { opacity: 1; }
+.topbar-version--checking { opacity: 0.4; cursor: wait; }
+.topbar-version--ok { color: #10b981; opacity: 1; font-weight: 600; }
+
+/* -------- 自动更新 banner（topbar 内嵌胶囊） -------- */
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(251, 146, 60, 0.1);
+  border: none;
+  color: #f97316;
+  font-size: 12px;
+  white-space: nowrap;
+  --wails-draggable: none;
+}
+.update-banner-version {
+  font-weight: 700;
+  font-size: 12px;
+  color: #f97316;
+}
+.update-banner-label {
+  font-size: 12px;
+  color: rgba(249, 115, 22, 0.6);
+}
+.update-banner-error { color: #ef4444; font-size: 11px; }
+.update-btn-install {
+  padding: 2px 8px;
+  border-radius: 5px;
+  border: none;
+  background: #f97316;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-left: 2px;
+}
+.update-btn-install:hover:not(:disabled) { background: #ea580c; }
+.update-btn-install:disabled { opacity: 0.5; cursor: not-allowed; }
+.update-btn-dismiss {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: rgba(249, 115, 22, 0.4);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s;
+}
+.update-btn-dismiss:hover:not(:disabled) { color: #f97316; }
+.update-btn-dismiss:disabled { cursor: not-allowed; }
+.update-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 80px;
+  height: 14px;
+  background: rgba(249,115,22,0.15);
+  border-radius: 7px;
+  overflow: hidden;
+  position: relative;
+}
+.update-progress-bar {
+  height: 100%;
+  background: #f97316;
+  border-radius: 7px;
+  transition: width 0.3s ease;
+  min-width: 4px;
+}
+.update-progress-text {
+  position: absolute;
+  right: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  mix-blend-mode: difference;
+  pointer-events: none;
+}

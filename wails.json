@@ -15,6 +15,7 @@
     "productName": "QCCG",
     "productVersion": "1.0.0",
     "copyright": "Copyright © 2026",
-    "comments": "QCCG: Qoder Claude Codex Gemini Gateway"
+    "comments": "QCCG: Qoder Claude Codex Gemini Gateway",
+    "bundleIdentifier": "com.qccg.app"
   }
 }

@@ -1,16 +1,81 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { Events } from '@wailsio/runtime'
 import appLogo from './assets/qoder.png'
 import AccountsPage from './pages/AccountsPage'
 import SettingsPage from './pages/SettingsPage'
 import ClientConfigPage from './pages/ClientConfigPage'
 import LogsPage from './pages/LogsPage'
 import StatusIndicator from './components/StatusIndicator'
+import { ApplyUpdate, GetVersion, CheckUpdate } from '../bindings/qccg/app'
 import './App.css'
 
 type Page = 'accounts' | 'settings' | 'clients' | 'logs'
 
+interface UpdateInfo {
+  has_update: boolean
+  current: string
+  latest: string
+  body: string
+  download_url: string
+  file_size: number
+}
+
 export default function App() {
   const [page, setPage] = useState<Page>('accounts')
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
+  const [updating, setUpdating] = useState(false)
+  const [updateProgress, setUpdateProgress] = useState(0)
+  const [updateError, setUpdateError] = useState<string | null>(null)
+  const [version, setVersion] = useState<string>('')
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [upToDate, setUpToDate] = useState(false)
+
+  useEffect(() => {
+    GetVersion().then(setVersion).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const unsubAvail = Events.On('update-available', (event: any) => {
+      const data = event?.data
+      if (data?.has_update) setUpdateInfo(data)
+    })
+    const unsubProgress = Events.On('update-progress', (event: any) => {
+      const pct = typeof event?.data === 'number' ? event.data : 0
+      setUpdateProgress(pct)
+    })
+    return () => { unsubAvail(); unsubProgress() }
+  }, [])
+
+  async function handleCheckUpdate() {
+    if (checkingUpdate) return
+    setCheckingUpdate(true)
+    setUpToDate(false)
+    try {
+      const info = await CheckUpdate()
+      if (info?.has_update) {
+        setUpdateInfo(info as UpdateInfo)
+      } else {
+        setUpToDate(true)
+        setTimeout(() => setUpToDate(false), 3000)
+      }
+    } catch (_) {}
+    setCheckingUpdate(false)
+  }
+
+  async function handleUpdate() {
+    if (!updateInfo) return
+    setUpdating(true)
+    setUpdateProgress(0)
+    setUpdateError(null)
+    try {
+      await ApplyUpdate()
+      // 更新脚本已启动， app 即将退出
+    } catch (e: any) {
+      setUpdateError(e?.message ?? String(e))
+      setUpdating(false)
+      setUpdateProgress(0)
+    }
+  }
 
   return (
     <div className="app">
@@ -18,6 +83,35 @@ export default function App() {
         <div className="topbar-left">
           <span className="topbar-title">QCCG</span>
           <StatusIndicator />
+        </div>
+        <div className="topbar-right">
+          {version && (
+            <span
+              className={`topbar-version${checkingUpdate ? ' topbar-version--checking' : ''}${upToDate ? ' topbar-version--ok' : ''}`}
+              onClick={handleCheckUpdate}
+              title="点击检查更新"
+            >
+              {upToDate ? '✓ 已是最新' : `v${version}`}
+            </span>
+          )}
+          {updateInfo && (
+            <div className="update-banner">
+              <span className="update-banner-version">{updateInfo.latest}</span>
+              <span className="update-banner-label">可用</span>
+              {updateError && <span className="update-banner-error">{updateError}</span>}
+              {updating ? (
+                <div className="update-progress-wrap">
+                  <div className="update-progress-bar" style={{width: `${updateProgress}%`}} />
+                  <span className="update-progress-text">{updateProgress}%</span>
+                </div>
+              ) : (
+                <>
+                  <button className="update-btn-install" onClick={handleUpdate}>更新</button>
+                  <button className="update-btn-dismiss" onClick={() => setUpdateInfo(null)}>×</button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </header>
       <nav className="sidebar">

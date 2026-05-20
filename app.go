@@ -16,6 +16,7 @@ import (
 	"qccg/account"
 	"qccg/internal/bridge"
 	"qccg/internal/cosy"
+	"qccg/internal/updater"
 	"qccg/logger"
 )
 
@@ -73,6 +74,79 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	acct, _ := account.GetActive()
 	if acct != nil {
 		_ = a.startBridgeWithAccount(acct)
+	}
+
+	// 启动后异步检查更新，不阻塞主流程
+	go a.checkUpdateInBackground()
+
+	return nil
+}
+
+// GetVersion 返回当前版本号。
+func (a *App) GetVersion() string {
+	return updater.Version
+}
+
+// checkUpdateInBackground 启动后异步检查更新，有新版本时通过前端回调通知。
+func (a *App) checkUpdateInBackground() {
+	// 等一秒确保前端加载完成
+	time.Sleep(1 * time.Second)
+
+	info, err := updater.Check()
+	if err != nil {
+		logger.Debug("更新检查失败: %v", err)
+		return
+	}
+	if !info.HasUpdate {
+		logger.Debug("当前已是最新版本 (%s)", info.Current)
+		return
+	}
+
+	logger.Info("发现新版本: %s → %s", info.Current, info.Latest)
+
+	// 通过 Wails 事件通知前端
+	if a.app != nil {
+		a.app.Event.Emit("update-available", info)
+	}
+}
+
+// CheckUpdate 前端调用：手动检查更新。
+func (a *App) CheckUpdate() *updater.UpdateInfo {
+	info, err := updater.Check()
+	if err != nil {
+		logger.Error("手动检查更新失败: %v", err)
+		return &updater.UpdateInfo{HasUpdate: false, Current: updater.Version}
+	}
+	return info
+}
+
+// ApplyUpdate 前端调用：执行更新，通过事件推送进度。
+func (a *App) ApplyUpdate() error {
+	info, err := updater.Check()
+	if err != nil {
+		return fmt.Errorf("检查更新失败: %w", err)
+	}
+	if !info.HasUpdate {
+		return fmt.Errorf("没有可用更新")
+	}
+
+	logger.Info("开始更新到 %s", info.Latest)
+
+	onProgress := func(pct int) {
+		if a.app != nil {
+			a.app.Event.Emit("update-progress", pct)
+		}
+	}
+
+	ok, err := updater.Apply(info.DownloadURL, onProgress)
+	if err != nil {
+		return err
+	}
+	if ok {
+		// 更新脚本已启动，退出当前 app
+		if a.app != nil {
+			a.app.Quit()
+		}
 	}
 	return nil
 }

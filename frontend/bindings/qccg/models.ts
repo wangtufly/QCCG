@@ -143,6 +143,33 @@ export class QoderModel {
     }
 }
 
+/**
+ * UpdateInfo 返回给前端的更新信息。
+ */
+export class UpdateInfo {
+    "has_update": boolean;
+    "current": string;
+    "latest": string;
+    "body": string;
+    "download_url": string;
+    "file_size": number;
+
+    constructor($$source: Partial<UpdateInfo> = {}) {
+        if (!("has_update" in $$source)) { this["has_update"] = false; }
+        if (!("current" in $$source)) { this["current"] = ""; }
+        if (!("latest" in $$source)) { this["latest"] = ""; }
+        if (!("body" in $$source)) { this["body"] = ""; }
+        if (!("download_url" in $$source)) { this["download_url"] = ""; }
+        if (!("file_size" in $$source)) { this["file_size"] = 0; }
+        Object.assign(this, $$source);
+    }
+
+    static createFrom($$source: any = {}): UpdateInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new UpdateInfo($$parsedSource as Partial<UpdateInfo>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = ClientConfigFile.createFrom;
 const $$createType1 = $Create.Array($$createType0);

@@ -13,26 +13,49 @@ APP_BUNDLE="${BIN_DIR}/${APP_NAME}.app"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 DMG_NAME="${PRODUCT_NAME}_${TIMESTAMP}.dmg"
 DMG_PATH="${BIN_DIR}/${DMG_NAME}"
+VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo 'dev')}"
+CERT_NAME="QCCG Self-Signed"
+KEYCHAIN_PATH="$HOME/Library/Keychains/qccg-codesign.keychain-db"
 
 cd "${PROJECT_ROOT}"
 
-# ---------- 1. wails 构建 ----------
-echo "==> wails build (universal)"
-# universal: 同时打包 arm64 + amd64，兼容所有 Mac
-wails build -platform darwin/universal -clean
+# ---------- 1. 构建前端 ----------
+echo "==> frontend build"
+cd "${PROJECT_ROOT}/frontend"
+npm run build
+cd "${PROJECT_ROOT}"
 
-if [[ ! -d "${APP_BUNDLE}" ]]; then
-  echo "构建失败: 未生成 ${APP_BUNDLE}"
+# ---------- 2. go build ----------
+echo "==> go build version=${VERSION}"
+mkdir -p "${APP_BUNDLE}/Contents/MacOS"
+go build -tags production -trimpath \
+  -ldflags="-w -s -X qccg/internal/updater.Version=${VERSION}" \
+  -o "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
+
+if [[ ! -f "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}" ]]; then
+  echo "构建失败: 未生成可执行文件"
   exit 1
 fi
 
-# ---------- 2. 重新 ad-hoc 签名整个 .app ----------
-# wails 默认签名只覆盖主可执行文件，--deep 确保所有内嵌资源都被签到
-echo "==> ad-hoc 签名 .app"
-codesign --force --deep --sign - "${APP_BUNDLE}"
-codesign --verify --deep --strict --verbose=2 "${APP_BUNDLE}"
+# ---------- 3. 使用 QCCG 自签名证书签名 ----------
+# 若无证书，先运行 build/setup-codesign-cert.sh
+# 确保 keychain 在搜索列表中
+security list-keychains -s "$KEYCHAIN_PATH" "$HOME/Library/Keychains/login.keychain-db" /Library/Keychains/System.keychain 2>/dev/null || true
+security unlock-keychain -p qccg "$KEYCHAIN_PATH" 2>/dev/null || true
 
-# ---------- 3. 生成 dmg（create-dmg）----------
+if security find-identity -v -p codesigning "$KEYCHAIN_PATH" 2>/dev/null | grep -q "$CERT_NAME"; then
+  echo "==> QCCG 自签名 .app"
+  security unlock-keychain -p qccg "$KEYCHAIN_PATH" 2>/dev/null || true
+  codesign --force --deep --sign "$CERT_NAME" --keychain "$KEYCHAIN_PATH" "${APP_BUNDLE}"
+  codesign --verify --deep --strict --verbose=1 "${APP_BUNDLE}"
+  echo "  签名身份保持固定，更新后权限不丢失"
+else
+  echo "==> ad-hoc 签名 .app（无 QCCG 证书，运行 build/setup-codesign-cert.sh 创建）"
+  codesign --force --deep --sign - "${APP_BUNDLE}"
+  codesign --verify --deep --strict --verbose=1 "${APP_BUNDLE}"
+fi
+
+# ---------- 4. 生成 dmg（create-dmg）----------
 # 使用 create-dmg 替代 hdiutil，自动生成带 Applications 软链的拖拽安装窗口
 echo "==> 创建 dmg (create-dmg)"
 rm -f "${DMG_PATH}"
@@ -56,11 +79,17 @@ if [[ ! -f "${DMG_PATH}" ]]; then
   exit 1
 fi
 
-# ---------- 4. 给 dmg 自身也加 ad-hoc 签名 ----------
-echo "==> ad-hoc 签名 dmg"
-codesign --force --sign - "${DMG_PATH}"
+# ---------- 5. 签名 dmg ----------
+if security find-identity -v -p codesigning "$KEYCHAIN_PATH" 2>/dev/null | grep -q "$CERT_NAME"; then
+  echo "==> QCCG 自签名 dmg"
+  security unlock-keychain -p qccg "$KEYCHAIN_PATH" 2>/dev/null || true
+  codesign --force --sign "$CERT_NAME" --keychain "$KEYCHAIN_PATH" "${DMG_PATH}"
+else
+  echo "==> ad-hoc 签名 dmg"
+  codesign --force --sign - "${DMG_PATH}"
+fi
 
-# ---------- 5. 移除 quarantine 属性（本机已有的话） ----------
+# ---------- 6. 移除 quarantine 属性（本机已有的话） ----------
 xattr -dr com.apple.quarantine "${DMG_PATH}" 2>/dev/null || true
 
 echo

@@ -189,6 +189,20 @@ export function WaitOAuthLogin(loginID: string): $CancellablePromise<void> {
     return $Call.ByName("main.App.WaitOAuthLogin", loginID);
 }
 
+export function GetVersion(): $CancellablePromise<string> {
+    return $Call.ByName("main.App.GetVersion");
+}
+
+export function CheckUpdate(): $CancellablePromise<$models.UpdateInfo | null> {
+    return $Call.ByName("main.App.CheckUpdate").then(($result: any) => {
+        return $$createTypeUpdateInfo($result);
+    });
+}
+
+export function ApplyUpdate(): $CancellablePromise<void> {
+    return $Call.ByName("main.App.ApplyUpdate");
+}
+
 // Private type creation functions
 const $$createType0 = account$0.Account.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
@@ -209,3 +223,4 @@ const $$createType15 = $models.ClientConfigFile.createFrom;
 const $$createType16 = $Create.Nullable($$createType15);
 const $$createType17 = account$0.OAuthSession.createFrom;
 const $$createType18 = $Create.Nullable($$createType17);
+const $$createTypeUpdateInfo = $Create.Nullable($models.UpdateInfo.createFrom);

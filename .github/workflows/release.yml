@@ -129,7 +129,7 @@ jobs:
         run: |
           wails build \
             -platform darwin/${{ matrix.arch }} \
-            -ldflags "-X main.Version=${{ env.VERSION }}" \
+            -ldflags "-X qccg/internal/updater.Version=${{ env.VERSION }}" \
             -o qccg
         env:
           CGO_ENABLED: 1
@@ -141,7 +141,7 @@ jobs:
           go build \
             -tags production \
             -trimpath \
-            -ldflags="-w -s -X main.Version=${{ env.VERSION }}" \
+            -ldflags="-w -s -X qccg/internal/updater.Version=${{ env.VERSION }}" \
             -o build/bin/qccg
         env:
           CGO_ENABLED: 1
@@ -275,22 +275,22 @@ jobs:
           body: |
             ## QCCG ${{ env.VERSION }}
 
-            ### Features
-            - Multi-account management with PAT and OAuth authentication
-            - Bridge service for OpenAI, Claude, Codex, and Gemini APIs
-            - macOS desktop app built with Wails v3 framework
-            - Model mapping and configuration management
-            - Real-time account switching and bridge control
-            - System tray integration
+            ### 更新内容
+            - 多账号管理，支持 PAT 和 OAuth 登录
+            - 支持 OpenAI、Claude、Codex、Gemini 多种 API 协议
+            - 基于 Wails v3 的 macOS 原生桌面应用
+            - 模型映射与配置管理
+            - 实时切换账号与 Bridge 控制
+            - 系统托盘集成
 
-            ### Downloads
-            - **macOS (Intel)**： QCCG-${{ env.VERSION }}-darwin-amd64.dmg
-            - **macOS (Apple Silicon)**： QCCG-${{ env.VERSION }}-darwin-arm64.dmg
+            ### 下载
+            - **macOS Intel**：`QCCG-${{ env.VERSION }}-darwin-amd64.dmg`
+            - **macOS Apple Silicon**：`QCCG-${{ env.VERSION }}-darwin-arm64.dmg`
 
-            ### Installation
-            1. Download the `.dmg` file for your architecture
-            2. Open the DMG and drag QCCG to Applications
-            3. First-time users: Right-click → Open (to bypass Gatekeeper)
+            ### 安装方式
+            1. 下载对应架构的 `.dmg` 文件
+            2. 打开 DMG，将 QCCG 拖入应用程序文件夹
+            3. 首次运行请右键→「打开」，绕过 Gatekeeper 拦截
           files: release-assets/*
           generate_release_notes: true
           fail_on_unmatched_files: false
