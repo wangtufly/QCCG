@@ -24,6 +24,7 @@ interface UpdateInfo {
 export default function App() {
   const [page, setPage] = useState<Page>('accounts')
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
+  const [showUpdateModal, setShowUpdateModal] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [updateProgress, setUpdateProgress] = useState(0)
   const [updateError, setUpdateError] = useState<string | null>(null)
@@ -38,7 +39,7 @@ export default function App() {
   useEffect(() => {
     const unsubAvail = Events.On('update-available', (event: any) => {
       const data = event?.data
-      if (data?.has_update) setUpdateInfo(data)
+      if (data?.has_update) { setUpdateInfo(data); setShowUpdateModal(true) }
     })
     const unsubProgress = Events.On('update-progress', (event: any) => {
       const pct = typeof event?.data === 'number' ? event.data : 0
@@ -55,6 +56,7 @@ export default function App() {
       const info = await CheckUpdate()
       if (info?.has_update) {
         setUpdateInfo(info as UpdateInfo)
+        setShowUpdateModal(true)
       } else {
         setUpToDate(true)
         setTimeout(() => setUpToDate(false), 3000)
@@ -86,21 +88,27 @@ export default function App() {
           <StatusIndicator />
         </div>
         <div className="topbar-right">
-          {version && (
+          {(version || updateInfo) && (
             <span
               className={`topbar-version${checkingUpdate ? ' topbar-version--checking' : ''}${upToDate ? ' topbar-version--ok' : ''}${updateInfo ? ' topbar-version--update' : ''}`}
-              onClick={handleCheckUpdate}
+              onClick={updateInfo ? () => setShowUpdateModal(true) : handleCheckUpdate}
               title={updateInfo ? `有新版本 ${updateInfo.latest}，点击查看` : '点击检查更新'}
             >
-              {upToDate ? '✓ 已是最新' : version}
-              {updateInfo && <span className="topbar-update-dot" />}
+              {updateInfo && (
+                <span className="topbar-update-icon">
+                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                    <path d="M4 7V1M1 4l3-3 3 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </span>
+              )}
+              {upToDate ? '✓ 已是最新' : (version || updateInfo?.current)}
             </span>
           )}
         </div>
       </header>
       <UpdateModal
-        updateInfo={updateInfo}
-        onDismiss={() => setUpdateInfo(null)}
+        updateInfo={showUpdateModal ? updateInfo : null}
+        onDismiss={() => setShowUpdateModal(false)}
         onUpdate={handleUpdate}
         updating={updating}
         progress={updateProgress}

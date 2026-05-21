@@ -78,10 +78,16 @@ function shallowEqualBucket(a: Record<string, string>, b: Record<string, string>
 }
 
 // ============== MappingSelect ==============
+interface MappingSelectOption {
+  value: string
+  label: string
+  priceFactor?: number | null
+  isDefault?: boolean
+}
 interface MappingSelectProps {
   value: string
   onChange: (v: string) => void
-  options: { value: string; label: string }[]
+  options: MappingSelectOption[]
   placeholder?: string
 }
 
@@ -99,10 +105,42 @@ function MappingSelect({ value, onChange, options, placeholder = '请选择…' 
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
+  function renderOption(o: MappingSelectOption) {
+    return (
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {o.label}
+        </span>
+        {o.priceFactor != null && (
+          <span style={{
+            flexShrink: 0, fontSize: 11, fontWeight: 600,
+            display: 'inline-flex', alignItems: 'center',
+            padding: '0 5px', height: 18, borderRadius: 4,
+            background: o.priceFactor === 0 ? '#f3f4f6'
+              : o.priceFactor < 1 ? '#dcfce7'
+              : o.priceFactor <= 1.5 ? '#fef9c3'
+              : '#fee2e2',
+            color: o.priceFactor === 0 ? '#9ca3af'
+              : o.priceFactor < 1 ? '#16a34a'
+              : o.priceFactor <= 1.5 ? '#ca8a04'
+              : '#dc2626',
+          }}>×{o.priceFactor}</span>
+        )}
+        {o.isDefault && (
+          <span style={{
+            flexShrink: 0, fontSize: 10, lineHeight: 1,
+            padding: '2px 5px', borderRadius: 4,
+            background: '#ede9fe', color: '#7c3aed',
+          }}>默认</span>
+        )}
+      </span>
+    )
+  }
+
   return (
     <div ref={ref} className="mapping-custom-select" onClick={() => setOpen(o => !o)}>
       <span className="mapping-custom-select-value">
-        {selected ? selected.label : <span className="mapping-custom-select-placeholder">{placeholder}</span>}
+        {selected ? renderOption(selected) : <span className="mapping-custom-select-placeholder">{placeholder}</span>}
       </span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="12" height="12" style={{ flexShrink: 0, color: 'var(--text-muted)' }}>
         <polyline points="6 9 12 15 18 9"/>
@@ -115,7 +153,7 @@ function MappingSelect({ value, onChange, options, placeholder = '请选择…' 
               className={`mapping-custom-option${o.value === value ? ' selected' : ''}`}
               onMouseDown={e => { e.stopPropagation(); onChange(o.value); setOpen(false) }}
             >
-              {o.label}
+              {renderOption(o)}
             </div>
           ))}
         </div>
@@ -782,7 +820,9 @@ function ModelMappingSection({ agent, qoderModels, initialMappings, modelsLoadin
                   ? [
                       ...qoderModels.map(m => ({
                         value: m.key,
-                        label: `${m.display_name} (${m.key})${m.price_factor != null ? ` ×${m.price_factor}` : ''}${m.is_default ? ' · 默认' : ''}`
+                        label: `${m.display_name} (${m.key})`,
+                        priceFactor: m.price_factor ?? 0,
+                        isDefault: false,
                       })),
                       ...(r.to && !qoderModels.some(m => m.key === r.to) ? [{ value: r.to, label: `${r.to}（自定义/已下线）` }] : [])
                     ]

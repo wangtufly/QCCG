@@ -46,7 +46,7 @@ export default function UpdateModal({ updateInfo, onDismiss, onUpdate, updating,
           color: 'var(--text-primary)',
         }}>
           {rawHtml ? (
-            <div dangerouslySetInnerHTML={{ __html: rawHtml }} />
+            <div className="update-changelog" dangerouslySetInnerHTML={{ __html: rawHtml }} />
           ) : (
             <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>暂无更新说明</span>
           )}
@@ -75,8 +75,17 @@ export default function UpdateModal({ updateInfo, onDismiss, onUpdate, updating,
             </div>
           </div>
         ) : (
-          <div className="actions">
-            <button className="modal-cancel" onClick={onDismiss}>关闭</button>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button
+              onClick={onDismiss}
+              style={{
+                padding: '8px 18px', borderRadius: 8,
+                border: '1px solid var(--border)',
+                background: 'var(--bg-app)',
+                color: 'var(--text-secondary)',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+              }}
+            >关闭</button>
             <button className="btn btn-primary" onClick={onUpdate}>立即更新</button>
           </div>
         )}
