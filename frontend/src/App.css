@@ -1686,4 +1686,15 @@ body {
 .topbar-version:hover { opacity: 1; }
 .topbar-version--checking { opacity: 0.4; cursor: wait; }
 .topbar-version--ok { color: #10b981; opacity: 1; font-weight: 600; }
+.topbar-version--update { color: var(--primary); opacity: 1; }
+.topbar-update-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  background: var(--primary);
+  border-radius: 50%;
+  margin-left: 4px;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
 

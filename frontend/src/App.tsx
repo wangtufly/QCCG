@@ -88,11 +88,12 @@ export default function App() {
         <div className="topbar-right">
           {version && (
             <span
-              className={`topbar-version${checkingUpdate ? ' topbar-version--checking' : ''}${upToDate ? ' topbar-version--ok' : ''}`}
+              className={`topbar-version${checkingUpdate ? ' topbar-version--checking' : ''}${upToDate ? ' topbar-version--ok' : ''}${updateInfo ? ' topbar-version--update' : ''}`}
               onClick={handleCheckUpdate}
-              title="点击检查更新"
+              title={updateInfo ? `有新版本 ${updateInfo.latest}，点击查看` : '点击检查更新'}
             >
               {upToDate ? '✓ 已是最新' : version}
+              {updateInfo && <span className="topbar-update-dot" />}
             </span>
           )}
         </div>
