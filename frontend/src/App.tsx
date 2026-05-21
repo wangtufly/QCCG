@@ -6,6 +6,7 @@ import SettingsPage from './pages/SettingsPage'
 import ClientConfigPage from './pages/ClientConfigPage'
 import LogsPage from './pages/LogsPage'
 import StatusIndicator from './components/StatusIndicator'
+import UpdateModal from './components/UpdateModal'
 import { ApplyUpdate, GetVersion, CheckUpdate } from '../bindings/qccg/app'
 import './App.css'
 
@@ -94,26 +95,16 @@ export default function App() {
               {upToDate ? '✓ 已是最新' : version}
             </span>
           )}
-          {updateInfo && (
-            <div className="update-banner">
-              <span className="update-banner-version">{updateInfo.latest}</span>
-              <span className="update-banner-label">可用</span>
-              {updateError && <span className="update-banner-error">{updateError}</span>}
-              {updating ? (
-                <div className="update-progress-wrap">
-                  <div className="update-progress-bar" style={{width: `${updateProgress}%`}} />
-                  <span className="update-progress-text">{updateProgress}%</span>
-                </div>
-              ) : (
-                <>
-                  <button className="update-btn-install" onClick={handleUpdate}>更新</button>
-                  <button className="update-btn-dismiss" onClick={() => setUpdateInfo(null)}>×</button>
-                </>
-              )}
-            </div>
-          )}
         </div>
       </header>
+      <UpdateModal
+        updateInfo={updateInfo}
+        onDismiss={() => setUpdateInfo(null)}
+        onUpdate={handleUpdate}
+        updating={updating}
+        progress={updateProgress}
+        error={updateError}
+      />
       <nav className="sidebar">
         <div className="sidebar-brand" aria-hidden="true">
           <img src={appLogo} alt="" className="sidebar-logo" />
