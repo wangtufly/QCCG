@@ -15,25 +15,27 @@
 
 ## 安装
 
-### macOS
+### macOS (Homebrew 推荐)
+
+```bash
+brew tap wangtufly/qccg https://github.com/wangtufly/QCCG
+brew install --cask qccg
+```
+
+升级：
+
+```bash
+brew upgrade --cask qccg
+```
+
+### macOS (手动安装)
 
 从 [Releases](../../releases) 下载 `.dmg` 文件，打开后将 `QCCG.app` 拖入 Applications。
 
-首次打开需绕过 Gatekeeper，两种方式：
+首次打开需绕过 Gatekeeper：
 
 ```bash
-# 方式一：命令行移除隔离
 xattr -dr com.apple.quarantine /Applications/QCCG.app
-
-# 方式二：右键 QCCG.app → 打开 → 再次点击「打开」
-```
-
-### Linux
-
-```bash
-tar -xzf qccg-*-linux-amd64.tar.gz
-chmod +x qccg
-./qccg
 ```
 
 ## 使用

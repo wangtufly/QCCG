@@ -275,3 +275,40 @@ jobs:
           files: release-assets/*
           generate_release_notes: true
           fail_on_unmatched_files: false
+
+      - name: Update Homebrew Cask
+        if: steps.release_type.outputs.prerelease == 'false'
+        run: |
+          VERSION_CLEAN="${VERSION#v}"
+          SHA_ARM64=$(sha256sum release-assets/QCCG-${VERSION}-darwin-arm64.dmg | awk '{print $1}')
+          SHA_AMD64=$(sha256sum release-assets/QCCG-${VERSION}-darwin-amd64.dmg | awk '{print $1}')
+
+          cat > Casks/qccg.rb << EOF
+          cask "qccg" do
+            arch arm: "arm64", intel: "amd64"
+
+            version "${VERSION_CLEAN}"
+            sha256 arm:   "${SHA_ARM64}",
+                   intel: "${SHA_AMD64}"
+
+            url "https://github.com/wangtufly/QCCG/releases/download/v#{version}/QCCG-v#{version}-darwin-#{arch}.dmg"
+            name "QCCG"
+            desc "Qoder Claude Codex Gemini Gateway"
+            homepage "https://github.com/wangtufly/QCCG"
+
+            depends_on macos: ">= :monterey"
+
+            app "qccg.app", target: "QCCG.app"
+
+            zap trash: [
+              "~/Library/Application Support/QCCG",
+              "~/Library/Preferences/com.qccg.app.plist",
+            ]
+          end
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/qccg.rb
+          git commit -m "chore(brew): update cask to ${VERSION_CLEAN}" || exit 0
+          git push origin HEAD:main
