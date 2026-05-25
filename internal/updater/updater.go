@@ -44,6 +44,7 @@ type GitHubRelease struct {
 // UpdateInfo 返回给前端的更新信息。
 type UpdateInfo struct {
 	HasUpdate   bool   `json:"has_update"`
+	ForceUpdate bool   `json:"force_update"`
 	Current     string `json:"current"`
 	Latest      string `json:"latest"`
 	Body        string `json:"body"`
@@ -62,6 +63,11 @@ func Check() (*UpdateInfo, error) {
 		Current: Version,
 		Latest:  latest.TagName,
 		Body:    latest.Body,
+	}
+
+	// 检测 release body 中的强制更新标记
+	if strings.Contains(latest.Body, "<!-- force -->") {
+		info.ForceUpdate = true
 	}
 
 	if latest.TagName == "" || latest.TagName == Version || latest.TagName == "v"+Version {

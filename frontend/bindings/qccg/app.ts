@@ -15,6 +15,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as account$0 from "./account/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as updater$0 from "./internal/updater/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as logger$0 from "./logger/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -32,6 +35,13 @@ export function ApplyClientConfig(clientType: string, model: string): $Cancellab
 }
 
 /**
+ * ApplyUpdate 前端调用：执行更新，通过事件推送进度。
+ */
+export function ApplyUpdate(): $CancellablePromise<void> {
+    return $Call.ByName("main.App.ApplyUpdate");
+}
+
+/**
  * BackupClientConfigFile 在保存前把原文件备份到 ~/.qccg/backups/<type>_config.bak
  */
 export function BackupClientConfigFile(clientType: string): $CancellablePromise<void> {
@@ -40,6 +50,15 @@ export function BackupClientConfigFile(clientType: string): $CancellablePromise<
 
 export function CancelOAuthLogin(loginID: string): $CancellablePromise<void> {
     return $Call.ByName("main.App.CancelOAuthLogin", loginID);
+}
+
+/**
+ * CheckUpdate 前端调用：手动检查更新。
+ */
+export function CheckUpdate(): $CancellablePromise<updater$0.UpdateInfo | null> {
+    return $Call.ByName("main.App.CheckUpdate").then(($result: any) => {
+        return $$createType3($result);
+    });
 }
 
 /**
@@ -63,38 +82,45 @@ export function DeleteAccount(id: string): $CancellablePromise<void> {
 
 export function GetAccountQuota(accountID: string): $CancellablePromise<account$0.QuotaInfo | null> {
     return $Call.ByName("main.App.GetAccountQuota", accountID).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
 export function GetClientConfigs(): $CancellablePromise<$models.ClientConfig[]> {
     return $Call.ByName("main.App.GetClientConfigs").then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
 export function GetLogs(limit: number): $CancellablePromise<logger$0.Entry[]> {
     return $Call.ByName("main.App.GetLogs", limit).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType9($result);
     });
 }
 
 export function GetLogsSince(afterSeq: number, limit: number): $CancellablePromise<logger$0.LogPage> {
     return $Call.ByName("main.App.GetLogsSince", afterSeq, limit).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType10($result);
     });
 }
 
 export function GetSettings(): $CancellablePromise<account$0.Settings | null> {
     return $Call.ByName("main.App.GetSettings").then(($result: any) => {
-        return $$createType10($result);
+        return $$createType12($result);
     });
 }
 
 export function GetStatus(): $CancellablePromise<account$0.Status> {
     return $Call.ByName("main.App.GetStatus").then(($result: any) => {
-        return $$createType11($result);
+        return $$createType13($result);
     });
+}
+
+/**
+ * GetVersion 返回当前版本号。
+ */
+export function GetVersion(): $CancellablePromise<string> {
+    return $Call.ByName("main.App.GetVersion");
 }
 
 /**
@@ -110,7 +136,7 @@ export function HideWindow(): $CancellablePromise<void> {
 
 export function ListAccounts(): $CancellablePromise<account$0.Account[]> {
     return $Call.ByName("main.App.ListAccounts").then(($result: any) => {
-        return $$createType12($result);
+        return $$createType14($result);
     });
 }
 
@@ -119,7 +145,7 @@ export function ListAccounts(): $CancellablePromise<account$0.Account[]> {
  */
 export function ListQoderModels(): $CancellablePromise<$models.QoderModel[]> {
     return $Call.ByName("main.App.ListQoderModels").then(($result: any) => {
-        return $$createType14($result);
+        return $$createType16($result);
     });
 }
 
@@ -129,7 +155,7 @@ export function QuitApp(): $CancellablePromise<void> {
 
 export function ReadClientConfigFile(clientType: string): $CancellablePromise<$models.ClientConfigFile | null> {
     return $Call.ByName("main.App.ReadClientConfigFile", clientType).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType18($result);
     });
 }
 
@@ -170,7 +196,7 @@ export function StartBridge(): $CancellablePromise<void> {
 
 export function StartOAuthLogin(): $CancellablePromise<account$0.OAuthSession | null> {
     return $Call.ByName("main.App.StartOAuthLogin").then(($result: any) => {
-        return $$createType18($result);
+        return $$createType20($result);
     });
 }
 
@@ -189,38 +215,25 @@ export function WaitOAuthLogin(loginID: string): $CancellablePromise<void> {
     return $Call.ByName("main.App.WaitOAuthLogin", loginID);
 }
 
-export function GetVersion(): $CancellablePromise<string> {
-    return $Call.ByName("main.App.GetVersion");
-}
-
-export function CheckUpdate(): $CancellablePromise<$models.UpdateInfo | null> {
-    return $Call.ByName("main.App.CheckUpdate").then(($result: any) => {
-        return $$createTypeUpdateInfo($result);
-    });
-}
-
-export function ApplyUpdate(): $CancellablePromise<void> {
-    return $Call.ByName("main.App.ApplyUpdate");
-}
-
 // Private type creation functions
 const $$createType0 = account$0.Account.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = account$0.QuotaInfo.createFrom;
+const $$createType2 = updater$0.UpdateInfo.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = $models.ClientConfig.createFrom;
-const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = logger$0.Entry.createFrom;
+const $$createType4 = account$0.QuotaInfo.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = $models.ClientConfig.createFrom;
 const $$createType7 = $Create.Array($$createType6);
-const $$createType8 = logger$0.LogPage.createFrom;
-const $$createType9 = account$0.Settings.createFrom;
-const $$createType10 = $Create.Nullable($$createType9);
-const $$createType11 = account$0.Status.createFrom;
-const $$createType12 = $Create.Array($$createType0);
-const $$createType13 = $models.QoderModel.createFrom;
-const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = $models.ClientConfigFile.createFrom;
-const $$createType16 = $Create.Nullable($$createType15);
-const $$createType17 = account$0.OAuthSession.createFrom;
+const $$createType8 = logger$0.Entry.createFrom;
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = logger$0.LogPage.createFrom;
+const $$createType11 = account$0.Settings.createFrom;
+const $$createType12 = $Create.Nullable($$createType11);
+const $$createType13 = account$0.Status.createFrom;
+const $$createType14 = $Create.Array($$createType0);
+const $$createType15 = $models.QoderModel.createFrom;
+const $$createType16 = $Create.Array($$createType15);
+const $$createType17 = $models.ClientConfigFile.createFrom;
 const $$createType18 = $Create.Nullable($$createType17);
-const $$createTypeUpdateInfo = $Create.Nullable($models.UpdateInfo.createFrom);
+const $$createType19 = account$0.OAuthSession.createFrom;
+const $$createType20 = $Create.Nullable($$createType19);

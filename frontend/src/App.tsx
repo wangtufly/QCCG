@@ -14,6 +14,7 @@ type Page = 'accounts' | 'settings' | 'clients' | 'logs'
 
 interface UpdateInfo {
   has_update: boolean
+  force_update?: boolean
   current: string
   latest: string
   body: string
@@ -108,7 +109,7 @@ export default function App() {
       </header>
       <UpdateModal
         updateInfo={showUpdateModal ? updateInfo : null}
-        onDismiss={() => setShowUpdateModal(false)}
+        onDismiss={() => { if (!updateInfo?.force_update) setShowUpdateModal(false) }}
         onUpdate={handleUpdate}
         updating={updating}
         progress={updateProgress}

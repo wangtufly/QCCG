@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify'
 
 interface UpdateInfo {
   has_update: boolean
+  force_update?: boolean
   current: string
   latest: string
   body: string
@@ -22,17 +23,23 @@ interface UpdateModalProps {
 export default function UpdateModal({ updateInfo, onDismiss, onUpdate, updating, progress, error }: UpdateModalProps) {
   if (!updateInfo) return null
 
+  const forceUpdate = !!updateInfo.force_update
+
   const rawHtml = updateInfo.body
     ? DOMPurify.sanitize(marked.parse(updateInfo.body, { async: false }))
     : ''
 
   return (
-    <div className="modal-overlay" onClick={onDismiss}>
+    <div className="modal-overlay" onClick={forceUpdate ? undefined : onDismiss}>
       <div className="modal" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
         <div style={{ marginBottom: 20 }}>
-          <h3 style={{ margin: 0 }}>发现新版本 {updateInfo.latest}</h3>
+          <h3 style={{ margin: 0 }}>
+            {forceUpdate && <span style={{ color: '#ef4444', marginRight: 6 }}>⚠</span>}
+            发现新版本 {updateInfo.latest}
+          </h3>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
             当前版本：{updateInfo.current}
+            {forceUpdate && <span style={{ color: '#ef4444', marginLeft: 8, fontWeight: 500 }}>此版本为强制更新</span>}
           </div>
         </div>
 
@@ -76,16 +83,18 @@ export default function UpdateModal({ updateInfo, onDismiss, onUpdate, updating,
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button
-              onClick={onDismiss}
-              style={{
-                padding: '8px 18px', borderRadius: 8,
-                border: '1px solid var(--border)',
-                background: 'var(--bg-app)',
-                color: 'var(--text-secondary)',
-                fontSize: 13, fontWeight: 500, cursor: 'pointer',
-              }}
-            >关闭</button>
+            {!forceUpdate && (
+              <button
+                onClick={onDismiss}
+                style={{
+                  padding: '8px 18px', borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-app)',
+                  color: 'var(--text-secondary)',
+                  fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                }}
+              >关闭</button>
+            )}
             <button className="btn btn-primary" onClick={onUpdate}>立即更新</button>
           </div>
         )}
