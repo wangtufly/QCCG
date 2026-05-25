@@ -330,6 +330,48 @@ body {
 }
 
 /* ========== Accounts Grid ========== */
+.region-tabs {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-sidebar);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sidebar);
+  margin-bottom: 16px;
+  width: fit-content;
+  align-items: center;
+}
+
+.region-tab {
+  height: 30px;
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.region-tab:hover {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+
+.region-tab.active {
+  background: var(--primary);
+  color: white;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
 .accounts-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -363,13 +405,18 @@ body {
   display: flex;
   align-items: center;
   gap: 7px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .ac-name {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
 }
 
 .ac-updated {
@@ -666,6 +713,42 @@ body {
 }
 
 /* ========== Add Account Modal ========== */
+.region-selector {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.region-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.region-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  border-color: var(--primary);
+}
+
+.region-btn.active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: white;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+}
+
 .add-account-options {
   display: flex;
   flex-direction: column;
@@ -1432,6 +1515,19 @@ body {
   box-shadow: 0 0 0 2px var(--primary-light);
 }
 
+.mapping-row.unavailable {
+  border-color: var(--danger, #ef4444);
+  border-style: dashed;
+  color: var(--text-muted);
+}
+.mapping-row.unavailable:hover {
+  border-color: var(--danger, #ef4444);
+  box-shadow: none;
+}
+.mapping-row.unavailable > .mapping-custom-select .mapping-custom-select-value {
+  opacity: 0.5;
+}
+
 .mapping-input {
   flex: 1;
   min-width: 0;
@@ -1542,6 +1638,14 @@ body {
   background: var(--primary-light);
   color: var(--primary);
   font-weight: 500;
+}
+
+.mapping-custom-option.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.mapping-custom-option.disabled:hover {
+  background: transparent;
 }
 
 .mapping-delete-btn {

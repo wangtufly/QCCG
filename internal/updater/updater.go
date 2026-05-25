@@ -65,8 +65,8 @@ func Check() (*UpdateInfo, error) {
 		Body:    latest.Body,
 	}
 
-	// 检测 release body 中的强制更新标记
-	if strings.Contains(latest.Body, "<!-- force -->") {
+	// 检测 release body 中的强制更新标记（dev 版本忽略）
+	if strings.Contains(latest.Body, "<!-- force -->") && !strings.Contains(Version, "dev") {
 		info.ForceUpdate = true
 	}
 

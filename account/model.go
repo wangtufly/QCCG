@@ -8,8 +8,9 @@ type Account struct {
 	Email     string     `json:"email,omitempty"`
 	UserType  string     `json:"user_type,omitempty"`
 	Plan      string     `json:"plan,omitempty"`
-	AuthMode  string     `json:"auth_mode"` // "pat" | "oauth"
-	APIMode   string     `json:"api_mode"`  // "openai" | "anthropic" | "gemini" | "claude-code"
+	Region    Region     `json:"region,omitempty"` // "global" | "cn"，空值视为 global
+	AuthMode  string     `json:"auth_mode"`        // "pat" | "oauth"
+	APIMode   string     `json:"api_mode"`         // "openai" | "anthropic" | "gemini" | "claude-code"
 	Tags      []string   `json:"tags"`
 	CreatedAt time.Time  `json:"created_at"`
 	LastUsed  *time.Time `json:"last_used,omitempty"`

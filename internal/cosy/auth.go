@@ -10,8 +10,7 @@ import (
 )
 
 // ExchangeJobToken 将 PAT 或 refresh token 转换为 job token
-// 仅用于 PAT 认证方式，OAuth device token 不需要调用此函数
-func ExchangeJobToken(token, machineId, machineToken, machineType string) (map[string]interface{}, error) {
+func ExchangeJobToken(token, machineId, machineToken, machineType string, jobTokenURL ...string) (map[string]interface{}, error) {
 	date := CurrentDate()
 	sig := SignLegacy(date)
 
@@ -43,7 +42,12 @@ func ExchangeJobToken(token, machineId, machineToken, machineType string) (map[s
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", "https://center.qoder.sh/algo/api/v3/user/jobToken?Encode=1", strings.NewReader(body))
+	endpoint := "https://center.qoder.sh/algo/api/v3/user/jobToken?Encode=1"
+	if len(jobTokenURL) > 0 && jobTokenURL[0] != "" {
+		endpoint = jobTokenURL[0]
+	}
+
+	req, err := http.NewRequest("POST", endpoint, strings.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

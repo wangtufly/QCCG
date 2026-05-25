@@ -1,7 +1,6 @@
 package bridge
 
 import (
-	"qccg/internal/cosy"
 	"bufio"
 	"context"
 	"encoding/json"
@@ -9,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"qccg/internal/cosy"
 	"strings"
 	"time"
 
@@ -97,6 +98,19 @@ func (c *BearerClient) callGet(fullURL string) (map[string]interface{}, error) {
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("HTTP %d body=%s", resp.StatusCode, string(data))
+	}
+	preview := string(data)
+	if len(preview) > 2000 {
+		preview = preview[:2000]
+	}
+	logger.Info("callGet %s response (%d bytes): %s", fullURL, len(data), preview)
+	// debug: 按 URL 区分写入不同文件
+	if strings.Contains(fullURL, "model/list") {
+		if strings.Contains(fullURL, "gateway.qoder.com.cn") {
+			_ = os.WriteFile("/tmp/qccg-model-list-cn.json", data, 0644)
+		} else {
+			_ = os.WriteFile("/tmp/qccg-model-list-global.json", data, 0644)
+		}
 	}
 	var result map[string]interface{}
 	err = json.Unmarshal(data, &result)

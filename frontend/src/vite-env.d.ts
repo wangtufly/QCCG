@@ -5,8 +5,8 @@ interface Window {
     main: {
       App: {
         ListAccounts: () => Promise<any[]>
-        AddAccountByPAT: (pat: string) => Promise<any>
-        StartOAuthLogin: () => Promise<{ login_id: string; login_url: string }>
+        AddAccountByPAT: (pat: string, region: string) => Promise<any>
+        StartOAuthLogin: (region: string) => Promise<{ login_id: string; login_url: string }>
         WaitOAuthLogin: (loginID: string) => Promise<void>
         CancelOAuthLogin: (loginID: string) => Promise<void>
         DeleteAccount: (id: string) => Promise<void>

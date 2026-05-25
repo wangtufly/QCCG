@@ -278,24 +278,26 @@ jobs:
           fi
           echo "Generating changelog: ${PREV_TAG}..${VERSION}"
 
-          # 按 conventional commit 前缀分类
+          # 只保留用户关心的 feat 和 fix，去掉前缀只留描述
+          # 过滤掉纯技术性 scope（brew, ci, deps, chore, style, docs）
           FEAT=""
           FIX=""
-          OTHER=""
           while IFS= read -r line; do
             if [ -z "$line" ]; then continue; fi
+            # 提取描述：去掉 "type(scope): " 或 "type: " 前缀
+            desc=$(echo "$line" | sed -E 's/^[a-z]+(\([^)]*\))?[!]?:[[:space:]]*//')
+            if [ -z "$desc" ]; then continue; fi
             if echo "$line" | grep -qiE '^feat(\(|:)'; then
-              FEAT="${FEAT}- ${line}\n"
+              # 过滤纯技术 scope
+              if echo "$line" | grep -qiE '^feat\((brew|ci|deps|build)\)'; then continue; fi
+              FEAT="${FEAT}- ${desc}\n"
             elif echo "$line" | grep -qiE '^fix(\(|:)'; then
-              FIX="${FIX}- ${line}\n"
-            elif echo "$line" | grep -qiE '^(chore|ci|docs|style|refactor|perf|test)(\(|:)'; then
-              OTHER="${OTHER}- ${line}\n"
-            else
-              OTHER="${OTHER}- ${line}\n"
+              if echo "$line" | grep -qiE '^fix\((brew|ci|deps|build)\)'; then continue; fi
+              FIX="${FIX}- ${desc}\n"
             fi
           done <<< "$(git log ${PREV_TAG}..HEAD --pretty=format:'%s' --no-merges)"
 
-          # 组装 body
+          # 组装 body — 只展示新功能和修复
           BODY=""
           if [ -n "$FEAT" ]; then
             BODY="${BODY}## ✨ 新功能\n${FEAT}\n"
@@ -303,11 +305,8 @@ jobs:
           if [ -n "$FIX" ]; then
             BODY="${BODY}## 🐛 修复\n${FIX}\n"
           fi
-          if [ -n "$OTHER" ]; then
-            BODY="${BODY}## 🔧 其他\n${OTHER}\n"
-          fi
           if [ -z "$BODY" ]; then
-            BODY="暂无更新说明"
+            BODY="常规优化与稳定性改进。"
           fi
 
           # 写入文件避免多行转义问题

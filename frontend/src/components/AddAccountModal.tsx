@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Globe, Server } from 'lucide-react'
 import { AddAccountByPAT, StartOAuthLogin, WaitOAuthLogin, CancelOAuthLogin } from '../../bindings/qccg/app'
 import { Browser, Events } from '@wailsio/runtime'
 
@@ -9,6 +10,7 @@ interface Props { onClose: () => void }
 export default function AddAccountModal({ onClose }: Props) {
   const [mode, setMode] = useState<Mode>('select')
   const [pat, setPat] = useState('')
+  const [region, setRegion] = useState<'global' | 'cn'>('global')
   const [loginID, setLoginID] = useState('')
   const [loginURL, setLoginURL] = useState('')
   const [error, setError] = useState('')
@@ -19,7 +21,7 @@ export default function AddAccountModal({ onClose }: Props) {
     setLoading(true)
     setError('')
     try {
-      await AddAccountByPAT(pat.trim())
+      await AddAccountByPAT(pat.trim(), region)
       onClose()
     } catch (e: any) {
       setError(String(e))
@@ -32,14 +34,13 @@ export default function AddAccountModal({ onClose }: Props) {
     setLoading(true)
     setError('')
     try {
-      const session = await StartOAuthLogin()
+      const session = await StartOAuthLogin(region)
       if (!session) throw new Error('启动 OAuth 失败')
       setLoginID(session.login_id)
       setLoginURL(session.login_url)
       setMode('oauth-waiting')
 
       Browser.OpenURL(session.login_url)
-      // v3 事件回调签名为 (ev) => void，ev.data 才是原始 payload
       Events.Once('oauth:success', () => onClose())
       Events.Once('oauth:error', (ev) => {
         const msg = Array.isArray(ev.data) ? ev.data[0] : ev.data
@@ -65,6 +66,22 @@ export default function AddAccountModal({ onClose }: Props) {
 
         {mode === 'select' && (
           <div className="add-account-options">
+            <div className="region-selector">
+              <button
+                className={`region-btn ${region === 'global' ? 'active' : ''}`}
+                onClick={() => setRegion('global')}
+              >
+                <Globe size={14} />
+                国际站
+              </button>
+              <button
+                className={`region-btn ${region === 'cn' ? 'active' : ''}`}
+                onClick={() => setRegion('cn')}
+              >
+                <Server size={14} />
+                国内站
+              </button>
+            </div>
             <button className="add-option-card" onClick={() => setMode('pat')}>
               <div className="add-option-icon">🔑</div>
               <div className="add-option-info">
@@ -85,7 +102,7 @@ export default function AddAccountModal({ onClose }: Props) {
         {mode === 'pat' && (
           <div>
             <p className="modal-hint">
-              前往 Qoder 设置页 → API → Personal Access Token，复制后粘贴至下方
+              前往 Qoder {region === 'cn' ? '国内站' : '国际站'}设置页 → API → Personal Access Token，复制后粘贴至下方
             </p>
             <input
               value={pat}

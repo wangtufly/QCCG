@@ -99,7 +99,7 @@ func (a *App) GetClientConfigs() []ClientConfig {
 
 	for i := range configs {
 		cfg := &configs[i]
-		applied, model, err := readClientStatus(cfg.Type, home)
+		applied, model, err := readClientStatus(cfg.Type, home, port, token)
 		cfg.Applied = applied
 		cfg.Model = model
 		if err != nil {
@@ -559,14 +559,14 @@ func marshalJSONOrderPreserved(v interface{}) ([]byte, error) {
 	return []byte(b.String()), nil
 }
 
-func readClientStatus(clientType, home string) (applied bool, model string, err error) {
+func readClientStatus(clientType, home string, port int, token string) (applied bool, model string, err error) {
 	switch clientType {
 	case "claude":
-		return readClaudeStatus(home)
+		return readClaudeStatus(home, port, token)
 	case "codex":
-		return readCodexStatus(home)
+		return readCodexStatus(home, port, token)
 	case "gemini":
-		return readGeminiStatus(home)
+		return readGeminiStatus(home, port, token)
 	}
 	return false, "", nil
 }
@@ -641,21 +641,22 @@ func removeClaudeConfig(home string) error {
 	return nil
 }
 
-func readClaudeStatus(home string) (bool, string, error) {
-	if !hasBackupFile(home, "claude") {
-		return false, "", nil
-	}
+func readClaudeStatus(home string, port int, token string) (bool, string, error) {
 	path := filepath.Join(home, ".claude", "settings.json")
 	root, err := readJSONObjectOrEmpty(path)
 	if err != nil {
-		return true, "", nil
+		return false, "", nil
 	}
-	model := ""
-	if env, ok := root["env"].(map[string]interface{}); ok {
-		if v, ok := env["ANTHROPIC_MODEL"].(string); ok {
-			model = v
-		}
+	env, ok := root["env"].(map[string]interface{})
+	if !ok {
+		return false, "", nil
 	}
+	baseURL, _ := env["ANTHROPIC_BASE_URL"].(string)
+	authToken, _ := env["ANTHROPIC_AUTH_TOKEN"].(string)
+	if baseURL != bridgeBaseURL(port) || authToken != token {
+		return false, "", nil
+	}
+	model, _ := env["ANTHROPIC_MODEL"].(string)
 	return true, model, nil
 }
 
@@ -986,14 +987,37 @@ func removeCodexConfig(home string) error {
 	return nil
 }
 
-func readCodexStatus(home string) (bool, string, error) {
-	if !hasBackupFile(home, "codex") {
-		return false, "", nil
-	}
+func readCodexStatus(home string, port int, token string) (bool, string, error) {
 	tomlPath := filepath.Join(home, ".codex", "config.toml")
 	data, err := os.ReadFile(tomlPath)
 	if err != nil {
-		return true, "", nil
+		return false, "", nil
+	}
+	content := string(data)
+	expectedURL := bridgeBaseURL(port) + codexProviderURL
+	if !strings.Contains(content, expectedURL) {
+		return false, "", nil
+	}
+	// 检查 auth.json 中的 token
+	authPath := filepath.Join(home, ".codex", "auth.json")
+	authData, err := os.ReadFile(authPath)
+	if err != nil {
+		return false, "", nil
+	}
+	var authMap map[string]interface{}
+	if err := json.Unmarshal(authData, &authMap); err != nil {
+		return false, "", nil
+	}
+	// auth.json 存的 key 格式可能是 provider 为 key
+	foundToken := false
+	for _, v := range authMap {
+		if v == token {
+			foundToken = true
+			break
+		}
+	}
+	if !foundToken {
+		return false, "", nil
 	}
 	var doc map[string]interface{}
 	if err := toml.Unmarshal(data, &doc); err != nil {
@@ -1057,11 +1081,13 @@ func removeGeminiConfig(home string) error {
 	return nil
 }
 
-func readGeminiStatus(home string) (bool, string, error) {
-	if !hasBackupFile(home, "gemini") {
+func readGeminiStatus(home string, port int, token string) (bool, string, error) {
+	envMap, _ := readDotEnv(filepath.Join(home, ".gemini", ".env"))
+	baseURL := envMap["GOOGLE_GEMINI_BASE_URL"]
+	apiKey := envMap["GEMINI_API_KEY"]
+	if baseURL != bridgeBaseURL(port) || apiKey != token {
 		return false, "", nil
 	}
-	envMap, _ := readDotEnv(filepath.Join(home, ".gemini", ".env"))
 	return true, envMap["GEMINI_MODEL"], nil
 }
 

@@ -14,12 +14,12 @@ import (
 	"qccg/logger"
 )
 
-func qoderChatStreamURL() string {
-	return "https://api1.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1"
+func qoderChatStreamURL(region account.Region) string {
+	return account.GetEndpoints(region).ChatStreamURL
 }
 
-func qoderModelListURL() string {
-	return "https://api2.qoder.sh/algo/api/v2/model/list?Encode=1"
+func qoderModelListURL(region account.Region) string {
+	return account.GetEndpoints(region).ModelListURL
 }
 
 func ParseOAuthSecret(secret string) (deviceToken, refreshToken string) {
@@ -50,8 +50,9 @@ func ResolveOAuthUserID(userInfo map[string]interface{}) string {
 	return StrVal(userInfo, "uid")
 }
 
-func FetchUserInfoWithToken(token string) (map[string]interface{}, error) {
-	req, _ := http.NewRequest("GET", "https://openapi.qoder.sh/api/v1/userinfo", nil)
+func FetchUserInfoWithToken(token string, region account.Region) (map[string]interface{}, error) {
+	ep := account.GetEndpoints(region)
+	req, _ := http.NewRequest("GET", ep.UserinfoBase, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -71,6 +72,7 @@ func FetchUserInfoWithToken(token string) (map[string]interface{}, error) {
 type Bridge struct {
 	sess         *cosy.SessionContext
 	client       *BearerClient
+	region       account.Region
 	templateBase map[string]interface{}
 }
 
@@ -88,7 +90,7 @@ type QoderModel struct {
 // 支持两种认证方式：
 //  1. OAuth device token (dt-xxx): 直接使用，调用 /api/v1/userinfo 获取用户信息
 //  2. Personal Access Token (PAT): 调用 ExchangeJobToken 转换为 session token
-func NewBridge(pat string, templateBase map[string]interface{}) (*Bridge, error) {
+func NewBridge(pat string, region account.Region, templateBase map[string]interface{}) (*Bridge, error) {
 	mid := cosy.NewUUID()
 	mtoken := cosy.NewBase64Token()
 	mtype := cosy.NewHexToken(18)
@@ -100,7 +102,7 @@ func NewBridge(pat string, templateBase map[string]interface{}) (*Bridge, error)
 
 	deviceToken, refreshToken := ParseOAuthSecret(pat)
 	if strings.HasPrefix(deviceToken, "dt-") {
-		userInfo, err := FetchUserInfoWithToken(deviceToken)
+		userInfo, err := FetchUserInfoWithToken(deviceToken, region)
 		if err != nil {
 			return nil, fmt.Errorf("fetch user info: %w", err)
 		}
@@ -117,7 +119,7 @@ func NewBridge(pat string, templateBase map[string]interface{}) (*Bridge, error)
 			RefreshToken:       refreshToken,
 		}
 	} else {
-		jt, err := cosy.ExchangeJobToken(pat, mid, mtoken, mtype)
+		jt, err := cosy.ExchangeJobToken(pat, mid, mtoken, mtype, account.GetEndpoints(region).JobTokenURL)
 		if err != nil {
 			return nil, fmt.Errorf("exchangeJobToken: %w", err)
 		}
@@ -143,6 +145,7 @@ func NewBridge(pat string, templateBase map[string]interface{}) (*Bridge, error)
 	return &Bridge{
 		sess:         sess,
 		client:       client,
+		region:       region,
 		templateBase: templateBase,
 	}, nil
 }
@@ -150,20 +153,38 @@ func NewBridge(pat string, templateBase map[string]interface{}) (*Bridge, error)
 // ListAvailableModels 通过 cosy 签名调用 /algo/api/v2/model/list 拉取上游模型清单。
 // 返回顶层 assistant 数组中 enable=true 的模型，按 is_default desc + display_name asc 排序。
 func (b *Bridge) ListAvailableModels() ([]QoderModel, error) {
-	modelListURL := qoderModelListURL()
+	modelListURL := qoderModelListURL(b.region)
 	resp, err := b.client.callGet(modelListURL)
 	if err != nil {
 		return nil, err
 	}
+	// debug: 打印响应顶层 key
+	keys := make([]string, 0, len(resp))
+	for k := range resp {
+		keys = append(keys, k)
+	}
+	logger.Info("model list response keys: %v (region=%s)", keys, b.region)
 	models := parseQoderModels(resp)
 	if len(models) == 0 {
-		return nil, fmt.Errorf("%s -> empty model list", modelListURL)
+		return nil, fmt.Errorf("%s -> empty model list, keys=%v", modelListURL, keys)
 	}
 	return models, nil
 }
 
 func parseQoderModels(resp map[string]interface{}) []QoderModel {
-	rawList, _ := resp["assistant"].([]interface{})
+	// 按优先级尝试多个分类
+	categories := []string{"assistant", "developer", "chat"}
+	for _, cat := range categories {
+		rawList, _ := resp[cat].([]interface{})
+		out := extractModels(rawList)
+		if len(out) > 0 {
+			return out
+		}
+	}
+	return nil
+}
+
+func extractModels(rawList []interface{}) []QoderModel {
 	out := make([]QoderModel, 0, len(rawList))
 	for _, it := range rawList {
 		m, ok := it.(map[string]interface{})
@@ -171,9 +192,6 @@ func parseQoderModels(resp map[string]interface{}) []QoderModel {
 			continue
 		}
 		enable, _ := m["enable"].(bool)
-		if !enable {
-			continue
-		}
 		out = append(out, QoderModel{
 			Key:            StrVal(m, "key"),
 			DisplayName:    StrVal(m, "display_name"),
@@ -270,7 +288,7 @@ func (b *Bridge) CallQoder(ctx context.Context, agent string, messages []interfa
 		}
 	}
 
-	qurl := qoderChatStreamURL()
+	qurl := qoderChatStreamURL(b.region)
 	extra := map[string]string{
 		"x-model-key":    model,
 		"x-model-source": mcSource,

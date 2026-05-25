@@ -83,6 +83,7 @@ interface MappingSelectOption {
   label: string
   priceFactor?: number | null
   isDefault?: boolean
+  disabled?: boolean
 }
 interface MappingSelectProps {
   value: string
@@ -150,8 +151,8 @@ function MappingSelect({ value, onChange, options, placeholder = '请选择…' 
           {options.map(o => (
             <div
               key={o.value}
-              className={`mapping-custom-option${o.value === value ? ' selected' : ''}`}
-              onMouseDown={e => { e.stopPropagation(); onChange(o.value); setOpen(false) }}
+              className={`mapping-custom-option${o.value === value ? ' selected' : ''}${o.disabled ? ' disabled' : ''}`}
+              onMouseDown={e => { e.stopPropagation(); if (!o.disabled) { onChange(o.value); setOpen(false) } }}
             >
               {renderOption(o)}
             </div>
@@ -801,8 +802,11 @@ function ModelMappingSection({ agent, qoderModels, initialMappings, modelsLoadin
         <div className="mapping-empty">未配置自定义映射，将使用内置默认表（{(DEFAULT_MAPPING_BY_AGENT[agent] || []).map(([f, t]) => `${f}→${t}`).join(' / ') || '无'}）</div>
       ) : (
         <div className="mapping-list">
-          {rows.map(r => (
-            <div key={r.id} className="mapping-row">
+          {rows.map(r => {
+            const toModel = qoderModels.find(m => m.key === r.to)
+            const unavailable = qoderModels.length > 0 && r.to.trim() && (!toModel || !toModel.enable)
+            return (
+            <div key={r.id} className={`mapping-row${unavailable ? ' unavailable' : ''}`}>
               <MappingSelect
                 value={r.from}
                 onChange={v => updateRow(r.id, 'from', v)}
@@ -823,8 +827,9 @@ function ModelMappingSection({ agent, qoderModels, initialMappings, modelsLoadin
                         label: `${m.display_name} (${m.key})`,
                         priceFactor: m.price_factor ?? 0,
                         isDefault: false,
+                        disabled: !m.enable,
                       })),
-                      ...(r.to && !qoderModels.some(m => m.key === r.to) ? [{ value: r.to, label: `${r.to}（自定义/已下线）` }] : [])
+                      ...(r.to && !qoderModels.some(m => m.key === r.to) ? [{ value: r.to, label: r.to, disabled: true }] : [])
                     ]
                   : FALLBACK_QODER_KEYS.map(k => ({ value: k, label: k }))
                 }
@@ -836,7 +841,8 @@ function ModelMappingSection({ agent, qoderModels, initialMappings, modelsLoadin
                 </svg>
               </button>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

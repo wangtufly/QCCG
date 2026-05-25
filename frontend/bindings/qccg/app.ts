@@ -24,8 +24,8 @@ import * as logger$0 from "./logger/models.js";
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
-export function AddAccountByPAT(pat: string): $CancellablePromise<account$0.Account | null> {
-    return $Call.ByName("main.App.AddAccountByPAT", pat).then(($result: any) => {
+export function AddAccountByPAT(pat: string, region: string): $CancellablePromise<account$0.Account | null> {
+    return $Call.ByName("main.App.AddAccountByPAT", pat, region).then(($result: any) => {
         return $$createType1($result);
     });
 }
@@ -194,8 +194,8 @@ export function StartBridge(): $CancellablePromise<void> {
     return $Call.ByName("main.App.StartBridge");
 }
 
-export function StartOAuthLogin(): $CancellablePromise<account$0.OAuthSession | null> {
-    return $Call.ByName("main.App.StartOAuthLogin").then(($result: any) => {
+export function StartOAuthLogin(region: string): $CancellablePromise<account$0.OAuthSession | null> {
+    return $Call.ByName("main.App.StartOAuthLogin", region).then(($result: any) => {
         return $$createType20($result);
     });
 }

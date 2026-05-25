@@ -137,9 +137,11 @@ export default function AccountCard({ account: acct, onActivate, onDelete, refre
           <button title="刷新配额" className="ac-action-btn ac-action-refresh" onClick={fetchQuota}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
           </button>
+          {!acct.active && (
           <button title="删除" className="ac-action-btn ac-action-danger" onClick={() => onDelete(acct.id)}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
           </button>
+          )}
         </div>
       </div>
     </div>

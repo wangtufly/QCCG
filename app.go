@@ -160,13 +160,15 @@ func (a *App) ListAccounts() []account.Account {
 	return accounts
 }
 
-func (a *App) AddAccountByPAT(pat string) (*account.Account, error) {
+func (a *App) AddAccountByPAT(pat string, region string) (*account.Account, error) {
 	defer a.refreshTrayMenu()
+	r := account.NormalizeRegion(region)
+	ep := account.GetEndpoints(r)
 	mid := cosy.NewUUID()
 	mtoken := cosy.NewBase64Token()
 	mtype := cosy.NewHexToken(18)
 
-	jt, err := cosy.ExchangeJobToken(pat, mid, mtoken, mtype)
+	jt, err := cosy.ExchangeJobToken(pat, mid, mtoken, mtype, ep.JobTokenURL)
 	if err != nil {
 		return nil, fmt.Errorf("验证 PAT 失败: %w", err)
 	}
@@ -177,6 +179,7 @@ func (a *App) AddAccountByPAT(pat string) (*account.Account, error) {
 		Name:      bridge.StrVal(jt, "name"),
 		Email:     bridge.StrVal(jt, "email"),
 		UserType:  bridge.StrValDefault(jt, "userType", "personal_standard"),
+		Region:    r,
 		AuthMode:  "pat",
 		APIMode:   "openai",
 		Tags:      []string{},
@@ -191,8 +194,8 @@ func (a *App) AddAccountByPAT(pat string) (*account.Account, error) {
 	return acct, nil
 }
 
-func (a *App) StartOAuthLogin() (*account.OAuthSession, error) {
-	return account.StartLogin()
+func (a *App) StartOAuthLogin(region string) (*account.OAuthSession, error) {
+	return account.StartLogin(account.NormalizeRegion(region))
 }
 
 func (a *App) WaitOAuthLogin(loginID string) {
@@ -313,7 +316,7 @@ func (a *App) startBridgeWithAccount(acct *account.Account) error {
 	var templateBase map[string]interface{}
 	json.Unmarshal([]byte(tmpl), &templateBase)
 
-	b, err := bridge.NewBridge(pat, templateBase)
+	b, err := bridge.NewBridge(pat, acct.Region, templateBase)
 	if err != nil {
 		logger.Error("Failed to create bridge: %v", err)
 		return fmt.Errorf("failed to create bridge: %w", err)
@@ -413,7 +416,8 @@ func (a *App) GetAccountQuota(accountID string) (*account.QuotaInfo, error) {
 	if strings.HasPrefix(deviceToken, "dt-") {
 		token = deviceToken
 	} else {
-		jt, err := cosy.ExchangeJobToken(token, cosy.NewUUID(), cosy.NewBase64Token(), cosy.NewHexToken(18))
+		ep := account.GetEndpoints(acct.Region)
+		jt, err := cosy.ExchangeJobToken(token, cosy.NewUUID(), cosy.NewBase64Token(), cosy.NewHexToken(18), ep.JobTokenURL)
 		if err != nil {
 			return nil, fmt.Errorf("exchange token: %w", err)
 		}
@@ -423,7 +427,7 @@ func (a *App) GetAccountQuota(accountID string) (*account.QuotaInfo, error) {
 		}
 		token = oauthToken
 	}
-	return account.FetchQuota(token)
+	return account.FetchQuota(token, acct.Region)
 }
 
 // ListQoderModels 通过当前激活账号的 bridge 拉取 Qoder 上游可用模型列表。

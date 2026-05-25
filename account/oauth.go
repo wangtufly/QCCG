@@ -22,19 +22,13 @@ import (
 // 2. WaitLogin: 轮询 deviceToken/poll 端点，等待用户授权
 // 3. 获取 device token (dt-xxx)，用于后续 API 调用
 
-const (
-	oauthClientID    = "e883ade2-e6e3-4d6d-adf7-f92ceff5fdcb"
-	deviceLoginBase  = "https://qoder.com/device/selectAccounts"
-	pollEndpoint     = "https://openapi.qoder.sh/api/v1/deviceToken/poll"
-	userinfoEndpoint = "https://openapi.qoder.sh/api/v1/userinfo"
-	planEndpoint     = "https://openapi.qoder.sh/api/v2/user/plan"
-	quotaEndpoint    = "https://openapi.qoder.sh/api/v2/quota/usage"
-)
+const oauthClientID = "e883ade2-e6e3-4d6d-adf7-f92ceff5fdcb"
 
 type pendingOAuth struct {
 	loginID  string
 	nonce    string
 	verifier string
+	region   Region
 	ctx      context.Context
 	cancel   context.CancelFunc
 	deadline time.Time
@@ -46,8 +40,7 @@ var (
 )
 
 // StartLogin 启动 OAuth 登录流程
-// 返回登录 URL，用户需要在浏览器中打开此 URL 完成授权
-func StartLogin() (*OAuthSession, error) {
+func StartLogin(region Region) (*OAuthSession, error) {
 	verifier, challenge, err := pkce()
 	if err != nil {
 		return nil, err
@@ -55,14 +48,15 @@ func StartLogin() (*OAuthSession, error) {
 	nonce := newSimpleID()
 	loginID := newSimpleID()
 
+	ep := GetEndpoints(region)
 	params := url.Values{}
 	params.Set("nonce", nonce)
 	params.Set("challenge", challenge)
 	params.Set("challenge_method", "S256")
 	params.Set("client_id", oauthClientID)
-	loginURL := deviceLoginBase + "?" + params.Encode()
+	loginURL := ep.DeviceLoginBase + "?" + params.Encode()
 
-	logger.Info("OAuth: StartLogin loginID=%s", loginID)
+	logger.Info("OAuth: StartLogin loginID=%s region=%s", loginID, region)
 
 	pendingMu.Lock()
 	if pending != nil {
@@ -73,6 +67,7 @@ func StartLogin() (*OAuthSession, error) {
 		loginID:  loginID,
 		nonce:    nonce,
 		verifier: verifier,
+		region:   region,
 		ctx:      ctx,
 		cancel:   cancel,
 		deadline: time.Now().Add(10 * time.Minute),
@@ -83,7 +78,6 @@ func StartLogin() (*OAuthSession, error) {
 }
 
 // WaitLogin 等待用户完成 OAuth 授权
-// 轮询 deviceToken/poll 端点，直到获取到 device token 或超时
 func WaitLogin(loginID string) (*Account, error) {
 	logger.Debug("OAuth: WaitLogin called loginID=%s", loginID)
 
@@ -95,6 +89,8 @@ func WaitLogin(loginID string) (*Account, error) {
 		logger.Error("OAuth: no pending login for id %s", loginID)
 		return nil, fmt.Errorf("no pending login for id %s", loginID)
 	}
+
+	ep := GetEndpoints(p.region)
 
 	logger.Info("OAuth: Starting poll loop")
 	ticker := time.NewTicker(time.Second)
@@ -109,12 +105,12 @@ func WaitLogin(loginID string) (*Account, error) {
 			logger.Info("OAuth: Cancelled")
 			return nil, fmt.Errorf("oauth login cancelled")
 		case <-ticker.C:
-			deviceToken, refreshToken, err := pollToken(p.nonce, p.verifier)
+			deviceToken, refreshToken, err := pollToken(p.nonce, p.verifier, ep)
 			if err != nil {
 				continue
 			}
 			logger.Info("OAuth: Got token, building account")
-			acct, err := buildAccountFromToken(deviceToken, refreshToken)
+			acct, err := buildAccountFromToken(deviceToken, refreshToken, p.region, ep)
 			if err != nil {
 				logger.Error("OAuth: Build account error: %v", err)
 				return nil, err
@@ -138,15 +134,13 @@ func CancelLogin(loginID string) {
 }
 
 // pollToken 轮询 deviceToken/poll 端点
-// 返回 device token (dt-xxx)，用于后续 API 调用
-func pollToken(nonce, verifier string) (string, string, error) {
-	// 使用 GET 请求 + query 参数（参考 cockpit-tools）
+func pollToken(nonce, verifier string, ep Endpoints) (string, string, error) {
 	reqURL := fmt.Sprintf("%s?nonce=%s&verifier=%s&challenge_method=S256",
-		pollEndpoint,
+		ep.PollEndpoint,
 		url.QueryEscape(nonce),
 		url.QueryEscape(verifier))
 
-	logger.Debug("OAuth: Polling %s", pollEndpoint)
+	logger.Debug("OAuth: Polling %s", ep.PollEndpoint)
 
 	resp, err := http.Get(reqURL)
 	if err != nil {
@@ -187,15 +181,12 @@ func pollToken(nonce, verifier string) (string, string, error) {
 }
 
 // buildAccountFromToken 使用 device token 构建账号信息
-// device token 可以直接作为 Bearer token 调用 Qoder API
-func buildAccountFromToken(deviceToken, refreshToken string) (*Account, error) {
-	// 使用 device token 直接调用 API
-	// device token 可以作为 Bearer token 使用
-	info, err := fetchUserInfo(deviceToken)
+func buildAccountFromToken(deviceToken, refreshToken string, region Region, ep Endpoints) (*Account, error) {
+	info, err := fetchUserInfo(deviceToken, ep)
 	if err != nil {
 		return nil, fmt.Errorf("fetch user info: %w", err)
 	}
-	plan := fetchPlan(deviceToken)
+	plan := fetchPlan(deviceToken, ep)
 
 	id := SanitizeID(strGet(info, "userId") + strGet(info, "email"))
 	if id == "" {
@@ -208,6 +199,7 @@ func buildAccountFromToken(deviceToken, refreshToken string) (*Account, error) {
 		Email:     strings.ToLower(strGet(info, "email")),
 		UserType:  strGet(info, "userType"),
 		Plan:      plan,
+		Region:    region,
 		AuthMode:  "oauth",
 		APIMode:   "openai",
 		Tags:      []string{},
@@ -226,8 +218,8 @@ func buildAccountFromToken(deviceToken, refreshToken string) (*Account, error) {
 	return acct, nil
 }
 
-func fetchUserInfo(token string) (map[string]interface{}, error) {
-	req, _ := http.NewRequest("GET", userinfoEndpoint, nil)
+func fetchUserInfo(token string, ep Endpoints) (map[string]interface{}, error) {
+	req, _ := http.NewRequest("GET", ep.UserinfoBase, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -240,8 +232,8 @@ func fetchUserInfo(token string) (map[string]interface{}, error) {
 	return result, nil
 }
 
-func fetchPlan(token string) string {
-	req, _ := http.NewRequest("GET", planEndpoint, nil)
+func fetchPlan(token string, ep Endpoints) string {
+	req, _ := http.NewRequest("GET", ep.PlanEndpoint, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -278,8 +270,9 @@ func strGet(m map[string]interface{}, key string) string {
 	return ""
 }
 
-func FetchQuota(token string) (*QuotaInfo, error) {
-	req, _ := http.NewRequest("GET", quotaEndpoint, nil)
+func FetchQuota(token string, region Region) (*QuotaInfo, error) {
+	ep := GetEndpoints(region)
+	req, _ := http.NewRequest("GET", ep.QuotaEndpoint, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -293,7 +286,7 @@ func FetchQuota(token string) (*QuotaInfo, error) {
 	}
 
 	info := &QuotaInfo{
-		Plan:            fetchPlan(token),
+		Plan:            fetchPlan(token, ep),
 		IsQuotaExceeded: result["isQuotaExceeded"] == true,
 	}
 

@@ -17,6 +17,11 @@ export class Account {
     "plan"?: string;
 
     /**
+     * "global" | "cn"
+     */
+    "region"?: string;
+
+    /**
      * "pat" | "oauth"
      */
     "auth_mode": string;
