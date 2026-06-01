@@ -8,6 +8,7 @@ package updater
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,6 +26,22 @@ var Version = "0.0.0-dev"
 
 // Repo 检查更新的 GitHub 仓库 "owner/repo"。
 var Repo = "wangtufly/QCCG"
+
+// defaultMirror 默认镜像域名，可通过 GITHUB_MIRROR 环境变量覆盖。
+// 设为空字符串可禁用镜像，直连 GitHub。
+const defaultMirror = "ghproxy.com"
+
+// mirrorURL 自动替换下载域名为镜像地址。
+func mirrorURL(raw string) string {
+	mirror := os.Getenv("GITHUB_MIRROR")
+	if mirror == "" {
+		mirror = defaultMirror
+	} else if mirror == "-" {
+		// GITHUB_MIRROR=- 表示禁用镜像
+		return raw
+	}
+	return strings.Replace(raw, "github.com", mirror, 1)
+}
 
 // GitHubRelease 代表 GitHub Releases API 返回的 release 结构。
 type GitHubRelease struct {
@@ -216,49 +233,100 @@ func Apply(downloadURL string, onProgress func(pct int)) (bool, error) {
 
 func fetchLatest() (*GitHubRelease, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", Repo)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "QCCG-Updater/1.0")
 
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+	client := &http.Client{Timeout: 60 * time.Second}
 
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("GitHub API 返回 %d", resp.StatusCode)
-	}
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("User-Agent", "QCCG-Updater/1.0")
 
-	var release GitHubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return nil, err
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			if attempt < 3 {
+				time.Sleep(time.Duration(attempt) * 2 * time.Second)
+				continue
+			}
+			return nil, fmt.Errorf("检查更新失败（重试%d次后）: %w", attempt, lastErr)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("GitHub API 返回 %d", resp.StatusCode)
+			if attempt < 3 {
+				time.Sleep(time.Duration(attempt) * 2 * time.Second)
+				continue
+			}
+			return nil, fmt.Errorf("检查更新失败（重试%d次后）: %w", attempt, lastErr)
+		}
+
+		var release GitHubRelease
+		if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+			return nil, err
+		}
+		return &release, nil
 	}
-	return &release, nil
+	return nil, fmt.Errorf("检查更新失败（重试后仍失败）: %w", lastErr)
 }
 
 func downloadFile(url, dest string, onProgress func(pct int)) error {
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
+	// 下载大文件，30 分钟超时（覆盖 GitHub 下载慢的场景）
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
 
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("下载返回 %d", resp.StatusCode)
+	client := &http.Client{}
+
+	// 先试镜像，失败则回退直连
+	urls := []string{mirrorURL(url), url}
+	if mirrorURL(url) == url {
+		urls = []string{url} // 没启用镜像，只试直连
 	}
 
+	var lastErr error
+	for _, dlURL := range urls {
+		req, err := http.NewRequestWithContext(ctx, "GET", dlURL, nil)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		if resp.StatusCode != 200 {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("下载返回 %d (url=%s)", resp.StatusCode, dlURL)
+			continue
+		}
+
+		// 成功获取响应，开始写文件
+		err = writeResponseBody(resp, dest, onProgress, ctx)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return nil
+	}
+	return fmt.Errorf("下载失败（镜像+直连均不可用）: %w", lastErr)
+}
+
+// writeResponseBody 将 HTTP 响应体写入文件，带进度回调。
+func writeResponseBody(resp *http.Response, dest string, onProgress func(pct int), ctx context.Context) error {
 	f, err := os.Create(dest)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	// 真实按字节计算进度（5% → 55%）
 	total := resp.ContentLength // -1 表示未知
 	var downloaded int64
 	buf := make([]byte, 32*1024)
@@ -282,6 +350,13 @@ func downloadFile(url, dest string, onProgress func(pct int)) error {
 			break
 		}
 		if readErr != nil {
+			// 检查是否超时
+			if ctx.Err() != nil {
+				return fmt.Errorf("下载超时（已下载 %.1f MB / %.1f MB）: %w",
+					float64(downloaded)/1024/1024,
+					float64(total)/1024/1024,
+					ctx.Err())
+			}
 			return readErr
 		}
 	}
