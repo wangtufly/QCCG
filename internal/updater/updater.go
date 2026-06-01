@@ -151,7 +151,7 @@ func Apply(downloadURL string, onProgress func(pct int)) (bool, error) {
 	cachedDMG := cachedDMGPath(downloadURL)
 	hasCached := false
 	if cachedDMG != "" {
-		if fi, err := os.Stat(cachedDMG); err == nil && fi.Size() > 0 {
+		if fi, err := os.Stat(cachedDMG); err == nil && fi.Size() > 1024 && isDMGValid(cachedDMG) {
 			hasCached = true
 		}
 	}
@@ -320,37 +320,40 @@ func downloadFile(url, dest string, onProgress func(pct int)) error {
 
 	// 竞速：并发请求所有镜像，第一个成功返回 200 的胜出
 	type result struct {
-		resp *http.Response
-		err  error
+		resp   *http.Response
+		cancel context.CancelFunc
+		err    error
 	}
-
-	raceCtx, raceCancel := context.WithCancel(ctx)
-	defer raceCancel()
 
 	ch := make(chan result, len(urls))
 	for _, dlURL := range urls {
 		go func(u string) {
-			req, err := http.NewRequestWithContext(raceCtx, "GET", u, nil)
+			reqCtx, reqCancel := context.WithCancel(ctx)
+			req, err := http.NewRequestWithContext(reqCtx, "GET", u, nil)
 			if err != nil {
-				ch <- result{nil, err}
+				reqCancel()
+				ch <- result{nil, nil, err}
 				return
 			}
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
-				ch <- result{nil, err}
+				reqCancel()
+				ch <- result{nil, nil, err}
 				return
 			}
 			if resp.StatusCode != 200 {
 				resp.Body.Close()
-				ch <- result{nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, u)}
+				reqCancel()
+				ch <- result{nil, nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, u)}
 				return
 			}
-			ch <- result{resp, nil}
+			ch <- result{resp, reqCancel, nil}
 		}(dlURL)
 	}
 
 	// 收集结果，取第一个成功的
 	var winner *http.Response
+	var winnerCancel context.CancelFunc
 	var errs []error
 	for range urls {
 		r := <-ch
@@ -360,8 +363,10 @@ func downloadFile(url, dest string, onProgress func(pct int)) error {
 		}
 		if winner == nil {
 			winner = r.resp
-			raceCancel() // 取消其余请求
+			winnerCancel = r.cancel
 		} else {
+			// 取消落败请求
+			r.cancel()
 			r.resp.Body.Close()
 		}
 	}
@@ -370,6 +375,7 @@ func downloadFile(url, dest string, onProgress func(pct int)) error {
 		return fmt.Errorf("所有镜像下载失败: %v", errs)
 	}
 	defer winner.Body.Close()
+	defer winnerCancel()
 
 	return writeResponseBody(winner, dest, onProgress, ctx)
 }
@@ -502,6 +508,30 @@ rm -f "$0" && rmdir "%s" 2>/dev/null || true
 }
 
 // -------- 预下载 --------
+
+// isDMGValid 检查文件尾部是否包含 DMG trailer（koly 魔数）。
+func isDMGValid(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	// DMG 文件尾部 512 字节内包含 "koly" 魔数
+	fi, _ := f.Stat()
+	if fi.Size() < 512 {
+		return false
+	}
+	buf := make([]byte, 512)
+	if _, err := f.ReadAt(buf, fi.Size()-512); err != nil {
+		return false
+	}
+	for i := 0; i < len(buf)-4; i++ {
+		if buf[i] == 'k' && buf[i+1] == 'o' && buf[i+2] == 'l' && buf[i+3] == 'y' {
+			return true
+		}
+	}
+	return false
+}
 
 // cacheDir 返回预下载缓存目录。
 func cacheDir() string {
