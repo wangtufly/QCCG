@@ -48,6 +48,8 @@ func NewApp(app *application.App, window *application.WebviewWindow) *App {
 	return &App{app: app, window: window, bridgePort: 8963}
 }
 
+const tokenHealthCheckInterval = 30 * time.Minute
+
 // ServiceStartup 实现 v3 service 生命周期钩子，替代 v2 的 startup(ctx)。
 func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	// 文件日志在 Info("Application started") 之前初始化，确保启动期日志也能落盘
@@ -79,6 +81,7 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 
 	// 启动后异步检查更新，不阻塞主流程
 	go a.checkUpdateInBackground()
+	go a.startTokenHealthCheck(ctx)
 
 	return nil
 }
@@ -440,6 +443,43 @@ func (a *App) GetAccountQuota(accountID string) (*account.QuotaInfo, error) {
 	return account.FetchQuota(token, acct.Region)
 }
 
+// tokenHealthCheck 每次被调用时跑一次 model list 健康检查。
+// 如果检测到签名失效（code 101），则通过 Wails 事件通知前端。
+func (a *App) tokenHealthCheck() {
+	models, err := a.ListQoderModels()
+	if err != nil {
+		errStr := err.Error()
+		if strings.Contains(errStr, "\"code\":\"101\"") || strings.Contains(errStr, "Signature invalid") {
+			logger.Info("Token health check: signature invalid — token may be expired")
+			if a.window != nil {
+				a.window.EmitEvent("token-expired", map[string]string{
+					"message": "Qoder token 已过期，请重新登录",
+				})
+			}
+		}
+		return
+	}
+	logger.Debug("Token health check: OK (%d models)", len(models))
+}
+
+// startTokenHealthCheck 后台定时体检 token 是否过期。
+func (a *App) startTokenHealthCheck(ctx context.Context) {
+	// 启动后等 10 秒再首次检查，确保 bridge 已就绪
+	time.Sleep(10 * time.Second)
+	a.tokenHealthCheck()
+
+	ticker := time.NewTicker(tokenHealthCheckInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			a.tokenHealthCheck()
+		}
+	}
+}
+
 // ListQoderModels 通过当前激活账号的 bridge 拉取 Qoder 上游可用模型列表。
 func (a *App) ListQoderModels() ([]QoderModel, error) {
 	a.bridgeMu.Lock()
@@ -450,6 +490,15 @@ func (a *App) ListQoderModels() ([]QoderModel, error) {
 	}
 	models, err := b.ListAvailableModels()
 	if err != nil {
+		errStr := err.Error()
+		if strings.Contains(errStr, "\"code\":\"101\"") || strings.Contains(errStr, "Signature invalid") {
+			logger.Info("ListQoderModels: signature invalid detected")
+			if a.window != nil {
+				a.window.EmitEvent("token-expired", map[string]string{
+					"message": "Qoder token 已过期，请重新登录",
+				})
+			}
+		}
 		return nil, err
 	}
 	out := make([]QoderModel, len(models))

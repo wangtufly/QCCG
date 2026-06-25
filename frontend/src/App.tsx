@@ -46,7 +46,11 @@ export default function App() {
       const pct = typeof event?.data === 'number' ? event.data : 0
       setUpdateProgress(pct)
     })
-    return () => { unsubAvail(); unsubProgress() }
+    const unsubTokenExpired = Events.On('token-expired', (event: any) => {
+      const msg = event?.data?.message || 'Qoder token 已过期，请重新登录'
+      alert(msg)
+    })
+    return () => { unsubAvail(); unsubProgress(); unsubTokenExpired() }
   }, [])
 
   async function handleCheckUpdate() {
