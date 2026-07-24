@@ -26,6 +26,7 @@ type QoderModel struct {
 	DisplayName    string  `json:"display_name"`
 	Enable         bool    `json:"enable"`
 	IsDefault      bool    `json:"is_default"`
+	IsReasoning    bool    `json:"is_reasoning,omitempty"`
 	MaxInputTokens int     `json:"max_input_tokens,omitempty"`
 	PriceFactor    float64 `json:"price_factor,omitempty"`
 }
@@ -508,6 +509,7 @@ func (a *App) ListQoderModels() ([]QoderModel, error) {
 			DisplayName:    m.DisplayName,
 			Enable:         m.Enable,
 			IsDefault:      m.IsDefault,
+			IsReasoning:    m.IsReasoning,
 			MaxInputTokens: m.MaxInputTokens,
 			PriceFactor:    m.PriceFactor,
 		}

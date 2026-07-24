@@ -69,7 +69,18 @@ func (b *Bridge) HandleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 	prompt := ExtractLatestUserPrompt(incomingMsgs)
 	messages := BuildQoderMessages(b.templateMessages(), incomingMsgs, prompt, toolsEnabled)
 
-	logger.Info("[Claude][%s] model=%s stream=%v tools=%v msgs=%d", reqID, model, stream, toolsEnabled, len(incomingMsgs))
+	// 解析 thinking 参数和 max_tokens
+	opts := CallOpts{}
+	if thinking, ok := req["thinking"].(map[string]interface{}); ok {
+		if tp, _ := thinking["type"].(string); tp == "enabled" {
+			opts.IsReasoning = true
+		}
+	}
+	if mt, ok := req["max_tokens"].(float64); ok && int(mt) > 0 {
+		opts.MaxTokens = int(mt)
+	}
+
+	logger.Info("[Claude][%s] model=%s stream=%v tools=%v thinking=%v max_tokens=%d msgs=%d", reqID, model, stream, toolsEnabled, opts.IsReasoning, opts.MaxTokens, len(incomingMsgs))
 
 	msgId := "msg_" + cosy.NewRequestID()
 	ctx := r.Context()
@@ -110,16 +121,46 @@ func (b *Bridge) HandleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 		streamContentLen := 0
 		var totalInputTokens, totalOutputTokens int
 
-		err = b.CallQoder(ctx, "claude", messages, model, tools, func(d Delta) {
+		// thinking block 状态追踪
+		thinkingBlockOpen := false
+		thinkingBuf := ""
+
+		err = b.CallQoderWithOpts(ctx, "claude", messages, model, tools, opts, func(d Delta) {
 			if d.Err != nil {
-				// 上游业务错误，记录后让 callQoder 返回的 err 处理
 				return
 			}
 			if d.InputTokens > 0 || d.OutputTokens > 0 {
 				totalInputTokens = d.InputTokens
 				totalOutputTokens = d.OutputTokens
 			}
+			if d.Reasoning != "" && opts.IsReasoning {
+				if !thinkingBlockOpen {
+					// 先关闭默认的 text block，再开 thinking block
+					writeSse("content_block_stop", map[string]interface{}{"type": "content_block_stop", "index": contentBlockIndex})
+					contentBlockIndex++
+					writeSse("content_block_start", map[string]interface{}{
+						"type": "content_block_start", "index": contentBlockIndex,
+						"content_block": map[string]interface{}{"type": "thinking", "thinking": ""},
+					})
+					thinkingBlockOpen = true
+				}
+				thinkingBuf += d.Reasoning
+				writeSse("content_block_delta", map[string]interface{}{
+					"type": "content_block_delta", "index": contentBlockIndex,
+					"delta": map[string]interface{}{"type": "thinking_delta", "thinking": d.Reasoning},
+				})
+			}
 			if d.Content != "" {
+				if thinkingBlockOpen {
+					// 关闭 thinking block，开新 text block
+					writeSse("content_block_stop", map[string]interface{}{"type": "content_block_stop", "index": contentBlockIndex})
+					contentBlockIndex++
+					writeSse("content_block_start", map[string]interface{}{
+						"type": "content_block_start", "index": contentBlockIndex,
+						"content_block": map[string]interface{}{"type": "text", "text": ""},
+					})
+					thinkingBlockOpen = false
+				}
 				streamContentLen += len(d.Content)
 				writeSse("content_block_delta", map[string]interface{}{
 					"type": "content_block_delta", "index": contentBlockIndex,
@@ -185,15 +226,19 @@ func (b *Bridge) HandleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 		logger.Info("[Claude][%s] stream 完成 stop=%s content_len=%d tool_calls=%d 耗时=%dms", reqID, stopReason, streamContentLen, len(mergedTools), time.Since(startTime).Milliseconds())
 	} else {
 		var full strings.Builder
+		var reasoningBuf strings.Builder
 		var toolCallBuf []interface{}
 		var totalInputTokens, totalOutputTokens int
-		err = b.CallQoder(ctx, "claude", messages, model, tools, func(d Delta) {
+		err = b.CallQoderWithOpts(ctx, "claude", messages, model, tools, opts, func(d Delta) {
 			if d.Err != nil {
 				return
 			}
 			if d.InputTokens > 0 || d.OutputTokens > 0 {
 				totalInputTokens = d.InputTokens
 				totalOutputTokens = d.OutputTokens
+			}
+			if d.Reasoning != "" {
+				reasoningBuf.WriteString(d.Reasoning)
 			}
 			if d.Content != "" {
 				full.WriteString(d.Content)
@@ -209,6 +254,9 @@ func (b *Bridge) HandleClaudeMessages(w http.ResponseWriter, r *http.Request) {
 		}
 
 		content := []interface{}{}
+		if reasoningBuf.Len() > 0 && opts.IsReasoning {
+			content = append(content, map[string]interface{}{"type": "thinking", "thinking": reasoningBuf.String()})
+		}
 		if full.Len() > 0 {
 			content = append(content, map[string]interface{}{"type": "text", "text": full.String()})
 		}
@@ -260,19 +308,29 @@ func (b *Bridge) HandleListModels(w http.ResponseWriter, r *http.Request) {
 		models = nil
 	}
 	const fallbackContextWindow = 180000
+	const defaultMaxOutputTokens = 16384
 	data := make([]interface{}, 0, len(models))
 	for _, m := range models {
 		ctxWin := m.MaxInputTokens
 		if ctxWin == 0 {
 			ctxWin = fallbackContextWindow
 		}
-		data = append(data, map[string]interface{}{
-			"type":           "model",
-			"id":             m.Key,
-			"display_name":   m.DisplayName,
-			"created_at":     "2024-01-01T00:00:00Z",
-			"context_window": ctxWin,
-		})
+		maxOut := defaultMaxOutputTokens
+		if m.IsReasoning {
+			maxOut = 32768
+		}
+		entry := map[string]interface{}{
+			"type":              "model",
+			"id":               m.Key,
+			"display_name":     m.DisplayName,
+			"created_at":       "2024-01-01T00:00:00Z",
+			"context_window":   ctxWin,
+			"max_output_tokens": maxOut,
+		}
+		if m.IsReasoning {
+			entry["supports_thinking"] = true
+		}
+		data = append(data, entry)
 	}
 	if len(data) == 0 {
 		// 兜底：返回 Qoder 已知的 assistant 模型列表

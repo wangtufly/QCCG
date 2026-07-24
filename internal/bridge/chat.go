@@ -103,7 +103,12 @@ func (b *Bridge) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	} else {
 		var full strings.Builder
 		var toolCallBuf []interface{}
+		var totalInputTokens, totalOutputTokens int
 		err = b.CallQoder(ctx, InferAgent(model), messages, model, tools, func(d Delta) {
+			if d.InputTokens > 0 || d.OutputTokens > 0 {
+				totalInputTokens = d.InputTokens
+				totalOutputTokens = d.OutputTokens
+			}
 			if d.Content != "" {
 				full.WriteString(d.Content)
 			}
@@ -131,7 +136,7 @@ func (b *Bridge) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			"choices": []interface{}{
 				map[string]interface{}{"index": 0, "message": msg, "finish_reason": finishReason},
 			},
-			"usage": map[string]interface{}{"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+			"usage": map[string]interface{}{"prompt_tokens": totalInputTokens, "completion_tokens": totalOutputTokens, "total_tokens": totalInputTokens + totalOutputTokens},
 		}
 		logger.Info("[Chat][%s] 完成 finish=%s content_len=%d tool_calls=%d 耗时=%dms", reqID, finishReason, full.Len(), len(toolCallBuf), time.Since(startTime).Milliseconds())
 		logger.Debug("[Chat][%s] 响应体: %s", reqID, func() string { d, _ := json.Marshal(resp); return string(d) }())

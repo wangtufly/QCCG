@@ -11,6 +11,7 @@ import (
 type Delta struct {
 	Role         string
 	Content      string
+	Reasoning    string // 上游推理过程（reasoning_content）
 	ToolCalls    []interface{}
 	InputTokens  int
 	OutputTokens int
@@ -18,7 +19,7 @@ type Delta struct {
 }
 
 func (d Delta) isEmpty() bool {
-	return d.Role == "" && d.Content == "" && d.ToolCalls == nil && d.InputTokens == 0 && d.OutputTokens == 0 && d.Err == nil
+	return d.Role == "" && d.Content == "" && d.Reasoning == "" && d.ToolCalls == nil && d.InputTokens == 0 && d.OutputTokens == 0 && d.Err == nil
 }
 
 func ExtractDelta(dataLine string) Delta {
@@ -46,12 +47,13 @@ func ExtractDelta(dataLine string) Delta {
 		}
 		role, _ := delta["role"].(string)
 		content, _ := delta["content"].(string)
+		reasoning, _ := delta["reasoning_content"].(string)
 		var toolCalls []interface{}
 		if tc, ok := delta["tool_calls"].([]interface{}); ok && len(tc) > 0 {
 			toolCalls = tc
 		}
-		if role != "" || content != "" || toolCalls != nil {
-			return Delta{Role: role, Content: content, ToolCalls: toolCalls}
+		if role != "" || content != "" || reasoning != "" || toolCalls != nil {
+			return Delta{Role: role, Content: content, Reasoning: reasoning, ToolCalls: toolCalls}
 		}
 	}
 	// 上游最后一个 chunk 通常 choices 为空，但顶层携带 usage 统计

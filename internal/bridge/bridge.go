@@ -82,6 +82,7 @@ type QoderModel struct {
 	DisplayName    string  `json:"display_name"`
 	Enable         bool    `json:"enable"`
 	IsDefault      bool    `json:"is_default"`
+	IsReasoning    bool    `json:"is_reasoning,omitempty"`
 	MaxInputTokens int     `json:"max_input_tokens,omitempty"`
 	PriceFactor    float64 `json:"price_factor,omitempty"`
 }
@@ -197,6 +198,7 @@ func extractModels(rawList []interface{}) []QoderModel {
 			DisplayName:    StrVal(m, "display_name"),
 			Enable:         enable,
 			IsDefault:      func() bool { v, _ := m["is_default"].(bool); return v }(),
+			IsReasoning:    func() bool { v, _ := m["is_reasoning"].(bool); return v }(),
 			MaxInputTokens: int(cosy.FloatVal(m, "max_input_tokens")),
 			PriceFactor:    cosy.FloatVal(m, "price_factor"),
 		})
@@ -212,7 +214,17 @@ func DeepCopyMap(m map[string]interface{}) map[string]interface{} {
 	return out
 }
 
+// CallOpts 控制单次 CallQoder 的可选行为。
+type CallOpts struct {
+	IsReasoning bool // 是否启用推理模式（对应上游 model_config.is_reasoning）
+	MaxTokens   int  // 客户端请求的 max_tokens，0 表示使用模板默认值
+}
+
 func (b *Bridge) CallQoder(ctx context.Context, agent string, messages []interface{}, model string, tools interface{}, onDelta func(Delta)) error {
+	return b.CallQoderWithOpts(ctx, agent, messages, model, tools, CallOpts{}, onDelta)
+}
+
+func (b *Bridge) CallQoderWithOpts(ctx context.Context, agent string, messages []interface{}, model string, tools interface{}, opts CallOpts, onDelta func(Delta)) error {
 	// 将客户端模型名（claude-sonnet-4-6 等）映射成 Qoder 上游内部 model.key（auto/ultimate/performance/lite/efficient）。
 	// 上游对未知 key 会走兜底返回内容，但不会把这次调用计入 quota，这是「请求成功但 dashboard 无用量」的根因。
 	originalModel := model
@@ -232,6 +244,15 @@ func (b *Bridge) CallQoder(ctx context.Context, agent string, messages []interfa
 
 	if mc, ok := body["model_config"].(map[string]interface{}); ok {
 		mc["key"] = model
+		if opts.IsReasoning {
+			mc["is_reasoning"] = true
+		}
+	}
+
+	if opts.MaxTokens > 0 {
+		if params, ok := body["parameters"].(map[string]interface{}); ok {
+			params["max_tokens"] = opts.MaxTokens
+		}
 	}
 
 	// Extract summary prompt from last user message for chat_context and business.name
