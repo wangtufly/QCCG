@@ -3,12 +3,14 @@ package bridge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"qccg/internal/cosy"
 	"sort"
 	"strings"
+	"time"
 
 	"qccg/account"
 	"qccg/logger"
@@ -70,10 +72,11 @@ func FetchUserInfoWithToken(token string, region account.Region) (map[string]int
 }
 
 type Bridge struct {
-	sess         *cosy.SessionContext
-	client       *BearerClient
-	region       account.Region
-	templateBase map[string]interface{}
+	sess          *cosy.SessionContext
+	client        *BearerClient
+	region        account.Region
+	templateBase  map[string]interface{}
+	chatStreamURL string // 测试可注入本地 SSE 地址；生产环境为空
 }
 
 // QoderModel 是返回给前端的精简模型条目（仅保留下拉选择必要字段）
@@ -232,6 +235,47 @@ func (b *Bridge) CallQoderWithOpts(ctx context.Context, agent string, messages [
 	if model != originalModel {
 		logger.Debug("mapModel %s/%s -> %s", agent, originalModel, model)
 	}
+
+	const maxRetries = 3
+	const baseDelay = 2 * time.Second
+	var lastRetryAfter time.Duration
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			delay := retryDelay(baseDelay, attempt, lastRetryAfter)
+			logger.Info("retry attempt %d/%d after %v", attempt, maxRetries, delay)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+
+		err, retryAfter := b.callQoderOnce(ctx, agent, messages, model, tools, opts, onDelta)
+		if err == nil {
+			return nil
+		}
+		if !isRetryableError(err) {
+			return err
+		}
+		lastRetryAfter = retryAfter
+		logger.Info("retryable error on attempt %d: %v", attempt, err)
+		if attempt == maxRetries {
+			return fmt.Errorf("max retries exceeded: %w", err)
+		}
+	}
+
+	return fmt.Errorf("unexpected retry loop exit")
+}
+
+func retryDelay(baseDelay time.Duration, attempt int, retryAfter time.Duration) time.Duration {
+	if retryAfter > 0 {
+		return retryAfter
+	}
+	return baseDelay * time.Duration(1<<uint(attempt-1))
+}
+
+func (b *Bridge) callQoderOnce(ctx context.Context, agent string, messages []interface{}, model string, tools interface{}, opts CallOpts, onDelta func(Delta)) (error, time.Duration) {
 	body := DeepCopyMap(b.templateBase)
 
 	nid := cosy.NewUUID()
@@ -309,7 +353,10 @@ func (b *Bridge) CallQoderWithOpts(ctx context.Context, agent string, messages [
 		}
 	}
 
-	qurl := qoderChatStreamURL(b.region)
+	qurl := b.chatStreamURL
+	if qurl == "" {
+		qurl = qoderChatStreamURL(b.region)
+	}
 	extra := map[string]string{
 		"x-model-key":    model,
 		"x-model-source": mcSource,
@@ -322,8 +369,12 @@ func (b *Bridge) CallQoderWithOpts(ctx context.Context, agent string, messages [
 	logger.Info("callQoder model=%s prompt=%s", model, preview)
 	logger.Debug("callQoder request body: %s", func() string { d, _ := json.Marshal(body); return string(d) }())
 
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	var upstreamErr error
-	streamErr := b.client.openStreamLines(ctx, qurl, body, extra, func(line string) {
+	var retryAfter time.Duration
+	streamErr := b.client.openStreamLines(streamCtx, qurl, body, extra, func(line string) {
 		if !strings.HasPrefix(line, "data:") {
 			return
 		}
@@ -334,6 +385,10 @@ func (b *Bridge) CallQoderWithOpts(ctx context.Context, agent string, messages [
 		delta := ExtractDelta(dataPayload)
 		if delta.Err != nil {
 			upstreamErr = delta.Err
+			retryAfter = delta.RetryAfter
+			// 上游已发出明确的错误事件，但常常不主动关闭 SSE。
+			// 立即取消本次请求，避免等待最终的 HTTP/2 流错误。
+			cancel()
 			return
 		}
 		if !delta.isEmpty() {
@@ -341,9 +396,9 @@ func (b *Bridge) CallQoderWithOpts(ctx context.Context, agent string, messages [
 		}
 	})
 	if upstreamErr != nil {
-		return upstreamErr
+		return upstreamErr, retryAfter
 	}
-	return streamErr
+	return streamErr, 0
 }
 
 // RedactRequestBodyJSON 接收原始请求 JSON 字节，深拷贝后把可能含敏感对话内容的字段
@@ -522,4 +577,23 @@ func lookupMapping(model string, table map[string]string) string {
 		}
 	}
 	return ""
+}
+
+// isRetryableError 判断错误是否可重试。上游业务码由 ExtractDelta 分类，
+// 此处保留对 HTTP transport 错误的兼容判断。
+func isRetryableError(err error) bool {
+	var upstream *upstreamError
+	if errors.As(err, &upstream) {
+		return upstream.retryable
+	}
+	if err == nil {
+		return false
+	}
+	errMsg := err.Error()
+	for _, pattern := range []string{"HTTP 429", "HTTP 503"} {
+		if strings.Contains(errMsg, pattern) {
+			return true
+		}
+	}
+	return false
 }

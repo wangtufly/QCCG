@@ -17,7 +17,8 @@ import (
 )
 
 type BearerClient struct {
-	sess *cosy.SessionContext
+	sess       *cosy.SessionContext
+	httpClient *http.Client
 }
 
 func NewBearerClient(sess *cosy.SessionContext) *BearerClient {
@@ -185,8 +186,10 @@ func (c *BearerClient) openStreamLines(ctx context.Context, fullURL string, json
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	// 不设整体 Timeout，改由 context 控制生命周期，避免长流式响应被截断
-	client := &http.Client{}
+	client := c.httpClient
+	if client == nil {
+		client = &http.Client{}
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -207,6 +210,10 @@ func (c *BearerClient) openStreamLines(ctx context.Context, fullURL string, json
 		}
 	}
 	if err := scanner.Err(); err != nil {
+		if ctx.Err() != nil {
+			logger.Debug("stream read canceled: %v", ctx.Err())
+			return ctx.Err()
+		}
 		logger.Error("stream scanner error: %v", err)
 		return err
 	}
