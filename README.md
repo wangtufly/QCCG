@@ -1,5 +1,10 @@
 # QCCG
 
+> **此项目已停止维护（Archived）。**
+>
+> 最后一个版本为 `v0.7.1`，代码与安装包保留在此处供参考，不再更新、不再接受 Issue 与 Pull Request。
+> 若 Qoder 接口或客户端协议发生变化，本项目不会跟进适配，请自行评估继续使用的风险。
+
 [![GitHub Release](https://img.shields.io/github/v/release/wangtufly/qoder2API)](https://github.com/wangtufly/qoder2API/releases)
 [![Go](https://img.shields.io/badge/Go-1.25-blue)](https://go.dev)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
